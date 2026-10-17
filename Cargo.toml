@@ -11,7 +11,6 @@ rust-version = "1.85"
 
 [dependencies]
 codespan-reporting = "0.13.1"
-term = "1.2.1"
 
 [profile.release]
 debug = "line-tables-only"

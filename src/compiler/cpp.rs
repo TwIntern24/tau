@@ -639,7 +639,7 @@ mod tests {
         .map(|name| {
             Identifier::from(Token::new(
                 TokenType::Identifier(name.to_string()),
-                Source::default(),
+                Source::new(0, 0..0),
             ))
         });
         let values = names

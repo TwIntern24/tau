@@ -210,7 +210,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 Ok(self.types.lookup_name("bool"))
             }
             TokenType::Eq | TokenType::Neq => match (l.is_number(), r.is_number()) {
-                (true, true) => Ok(l),
+                (true, true) => Ok(self.types.lookup_name("bool")),
                 (true, false) => throw_error(
                     "since the left-hand-side is a number, the right-hand-side is expected to be a number too",
                 ),
@@ -219,7 +219,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 ),
                 (false, false) => {
                     if l == r {
-                        Ok(l)
+                        Ok(self.types.lookup_name("bool"))
                     } else {
                         throw_error("the types are expected to be the same")
                     }

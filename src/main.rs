@@ -95,31 +95,30 @@ fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl>, TypeTree, 
 #[cfg(test)]
 mod tests {
     use super::compile_file;
-    use crate::{cli::ArgsBuilder, error, lexer::Lexer, parser::Parser};
-    use std::{path::PathBuf, rc::Rc};
+    use crate::{cli::ArgsBuilder, error::Result, lexer::Lexer, parser::Parser};
 
     #[test]
     fn pipeline_arrays() -> Result<()> {
         let args = ArgsBuilder::new().build();
-        compile_file(&Rc::new(PathBuf::from("examples/arrays.tau")), &args)
+        compile_file("examples/arrays.tau", &args)
     }
 
     #[test]
     fn pipeline_heap() -> Result<()> {
         let args = ArgsBuilder::new().build();
-        compile_file(&Rc::new(PathBuf::from("examples/heap.tau")), &args)
+        compile_file("examples/heap.tau", &args)
     }
 
     #[test]
     fn pipeline_vec2() -> Result<()> {
         let args = ArgsBuilder::new().build();
-        compile_file(&Rc::new(PathBuf::from("examples/vec2.tau")), &args)
+        compile_file("examples/vec2.tau", &args)
     }
 
     #[test]
     fn infinite_scoping() -> Result<()> {
         let content = "{ { { { { { {} } } } } } }";
-        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
+        let lexer = Lexer::new(content.chars(), 0);
         let mut parser = Parser::new(lexer.scan().unwrap());
         parser.stmt().map(|_| {})
     }

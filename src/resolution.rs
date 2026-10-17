@@ -5,7 +5,7 @@ use crate::{
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
     },
-    error::{Result, diagnostic, error},
+    error::{Result, diagnostic, error, label},
     lexer::{Source, Token, TokenType},
     typing::{TypeCell, TypeDef, TypeNames, TypeTree},
 };
@@ -28,14 +28,8 @@ impl<'a> Resolution<'a> {
     }
 
     pub fn resolve(mut self, declarations: &'a Vec<Decl>) -> Result<TypeNames> {
-        let mut errors = Option::None;
         for decl in declarations {
-            if let Err(err) = self.visit_decl(decl) {
-                errors = err.after(errors);
-            }
-        }
-        if let Some(err) = errors {
-            return Err(err);
+            self.visit_decl(decl)?;
         }
         Ok(self
             .scopes
@@ -111,23 +105,31 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
     type Output = Result<Rc<TypeDef>>;
 
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Self::Output {
-        let throw_error = |msg: &str| {
-            return error(diagnostic(
-                msg.to_string(),
-                &Source::union(&operator.source(), &right.source()),
-            ));
-        };
         let r = self.visit_expr(right)?;
+        let throw_error = |msg: &str| {
+            return error(
+                diagnostic(
+                    msg.to_string(),
+                    &Source::union(&operator.source(), &right.source()),
+                )
+                .with_label(label(
+                    format!("right hand side has type {}", r),
+                    right.source(),
+                )),
+            );
+        };
         match operator.token_type() {
             TokenType::Not => {
                 if !r.is_bool() {
-                    throw_error("the value is not a boolean and cannot be negated")?;
+                    return throw_error("the value is not a boolean and cannot be negated");
                 }
                 Ok(r)
             }
             TokenType::Add | TokenType::Sub => {
                 if !r.is_number() {
-                    throw_error("the type is not a number and thus cannot be used like one (+/-)")?;
+                    return throw_error(
+                        "the type is not a number and thus cannot be used like one (+/-)",
+                    );
                 }
                 Ok(r)
             }
@@ -135,7 +137,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 if let TypeDef::RawPointer(inner) = r.as_ref() {
                     Ok(inner.clone())
                 } else {
-                    throw_error("can only deref pointers")
+                    return throw_error("can only deref pointers");
                 }
             }
             TokenType::Ref => Ok(Rc::new(TypeDef::RawPointer(r))),
@@ -149,14 +151,24 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         operator: &Token,
         right: &'a Rc<Expr>,
     ) -> Result<Rc<TypeDef>> {
-        let throw_error = |msg: &str| {
-            return error(diagnostic(
-                msg.to_string(),
-                &Source::union(&left.source(), &right.source()),
-            ));
-        };
         let l = self.visit_expr(left)?;
         let r = self.visit_expr(right)?;
+        let throw_error = |msg: &str| {
+            return error(
+                diagnostic(
+                    msg.to_string(),
+                    &Source::union(&left.source(), &right.source()),
+                )
+                .with_label(label(
+                    format!("left hand side has type {}", l),
+                    left.source(),
+                ))
+                .with_label(label(
+                    format!("right hand side has type {}", r),
+                    right.source(),
+                )),
+            );
+        };
         match operator.token_type() {
             TokenType::Add
             | TokenType::Sub
@@ -238,25 +250,33 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         &mut self,
         object: &'a Rc<Expr>,
         index: &'a Rc<Expr>,
-        looup: &'a TypeCell,
+        lookup: &'a TypeCell,
     ) -> Result<Rc<TypeDef>> {
         let l = self.visit_expr(object)?;
-        if let TypeDef::Array(array_type) = &*l {
-            let r = self.visit_expr(index)?;
+        let r = self.visit_expr(index)?;
+        if let TypeDef::Array(array_type) = l.as_ref() {
             if !r.is_integer() {
-                return error(diagnostic(
-                    "index has to be an integer".to_string(),
-                    index.source(),
-                ));
+                return error(
+                    diagnostic(
+                        "index has to be an integer".to_string(),
+                        &Source::union(object.source(), index.source()),
+                    )
+                    .with_label(label(format!("object has type {}", l), object.source()))
+                    .with_label(label(format!("index has type {}", r), index.source())),
+                );
             }
             let ref_type = self.types.lookup_type(&array_type)?;
-            *looup.borrow_mut() = ref_type.clone();
+            *lookup.borrow_mut() = ref_type.clone();
             Ok(ref_type)
         } else {
-            error(diagnostic(
-                "expected to index into an array".to_string(),
-                object.source(),
-            ))
+            error(
+                diagnostic(
+                    "expected to index into an array".to_string(),
+                    object.source(),
+                )
+                .with_label(label(format!("object has type {}", l), object.source()))
+                .with_label(label(format!("index has type {}", r), index.source())),
+            )
         }
     }
 
@@ -268,14 +288,17 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         let callee_type = self.visit_expr(callee)?;
         if let TypeDef::Function(function) = &*callee_type {
             if arguments.len() != function.parameters.len() {
-                return error(diagnostic(
-                    format!(
-                        "expected {} arguments, got {}",
-                        function.parameters.len(),
-                        arguments.len()
-                    ),
-                    callee.source(),
-                ));
+                return error(
+                    diagnostic(
+                        format!(
+                            "expected {} arguments, got {}",
+                            function.parameters.len(),
+                            arguments.len()
+                        ),
+                        callee.source(),
+                    )
+                    .with_label(label("function was defined here", callee.source())),
+                );
             }
 
             for (argument, para_type) in arguments.iter().zip(&function.parameters) {

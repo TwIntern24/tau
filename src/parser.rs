@@ -643,14 +643,18 @@ impl Parser {
 
     fn expr_if(&mut self) -> Result<Expr> {
         let condition = Rc::new(self.expr()?);
+        self.consume(&TokenType::BraceLeft)?;
         let if_branch = Rc::new(self.stmt()?);
+        let brace = self.consume(&TokenType::BraceRight)?;
         let (else_branch, source) = if *self.peek().token_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
+            self.consume(&TokenType::BraceLeft)?;
             let else_branch = self.stmt()?;
-            let source = Source::union(&condition.source(), &else_branch.source());
+            let brace = self.consume(&TokenType::BraceRight)?;
+            let source = Source::union(&condition.source(), &brace.source());
             (Some(Rc::new(else_branch)), source)
         } else {
-            let source = Source::union(&condition.source(), &if_branch.source());
+            let source = Source::union(&condition.source(), &brace.source());
             (None, source)
         };
         Ok(Expr::new(

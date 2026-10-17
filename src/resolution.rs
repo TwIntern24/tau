@@ -381,54 +381,70 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         else_branch: &'a Option<Rc<Stmt>>,
         expression_type: &'a TypeCell,
     ) -> Result<Rc<TypeDef>> {
-        self.visit_expr(condition)?;
-        match self.visit_stmt(if_branch) {
-            Ok(None) => Ok(self.types.lookup_name("void")),
-            Ok(Some(if_type)) => {
-                let if_type = self.types.lookup_type(&if_type)?;
-                if let Some(else_branch) = else_branch {
-                    match self.visit_stmt(else_branch) {
-                        Ok(Some(else_type)) => {
-                            let else_type = self.types.lookup_type(&else_type)?;
-                            if if_type.is_castable_to(&else_type) {
-                                *expression_type.borrow_mut() = else_type.clone();
-                                return Ok(else_type);
-                            }
-                            if else_type.is_castable_to(&if_type) {
-                                *expression_type.borrow_mut() = if_type.clone();
-                                return Ok(if_type);
-                            }
-
-                            return error(diagnostic(
-                                format!(
-                                    "if branch returns {if_type} while else branch returns {else_type}"
-                                ),
-                                &Source::union(&condition.source(), &else_branch.source()),
-                            ));
-                        }
-                        Ok(None) => {
-                            let void = self.types.lookup_name("void");
-                            if if_type != void {
-                                return error(diagnostic(
-                                    "if branch returns {if_type} while else branch returns nothing"
-                                        .to_string(),
-                                    &Source::union(&condition.source(), &else_branch.source()),
-                                ));
-                            }
-                            Ok(void)
-                        }
-
-                        Err(e) => Err(e),
-                    }
-                } else {
-                    return error(diagnostic(
-                        "if expression expected else branch".to_string(),
-                        &Source::union(&condition.source(), &if_branch.source()),
-                    ));
-                }
-            }
-            Err(_) => todo!(),
+        // Check condition
+        let c = self.visit_expr(condition)?;
+        if !c.is_bool() {
+            return error(
+                diagnostic(
+                    "if condition must be a boolean",
+                    &Source::union(condition.source(), if_branch.source()),
+                )
+                .with_label(label(
+                    format!("condition has type {}", c),
+                    condition.source(),
+                )),
+            );
         }
+
+        // Check if type
+        let if_type = match self.visit_stmt(if_branch)? {
+            Some(ty) => self.types.lookup_type(&ty)?,
+            None => return Ok(self.types.lookup_name("void")),
+        };
+
+        let Some(else_branch) = else_branch else {
+            let void = self.types.lookup_name("void");
+
+            if if_type == void {
+                return Ok(void);
+            }
+
+            return error(diagnostic(
+                "if expression expected else branch".to_string(),
+                &Source::union(&condition.source(), &if_branch.source()),
+            ));
+        };
+
+        // Check else type
+        let else_type = match self.visit_stmt(else_branch)? {
+            Some(ty) => self.types.lookup_type(&ty)?,
+            None => self.types.lookup_name("void"),
+        };
+
+        // Check if both branches have the same type
+        let result_type = if if_type.is_castable_to(&else_type) {
+            else_type
+        } else if else_type.is_castable_to(&if_type) {
+            if_type
+        } else {
+            return error(
+                diagnostic(
+                    format!("if expression has not the same type for if and else"),
+                    &Source::union(&condition.source(), &else_branch.source()),
+                )
+                .with_label(label(
+                    format!("if expression has type {}", if_type),
+                    if_branch.source(),
+                ))
+                .with_label(label(
+                    format!("else expression has type {}", else_type),
+                    else_branch.source(),
+                )),
+            );
+        };
+
+        *expression_type.borrow_mut() = result_type.clone();
+        Ok(result_type)
     }
 
     fn visit_literal(&mut self, value: &Token) -> Result<Rc<TypeDef>> {

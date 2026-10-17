@@ -1,5 +1,5 @@
 use crate::lexer::Source;
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Identifier {
@@ -12,16 +12,17 @@ impl Identifier {
         Identifier { name, source }
     }
 
-    pub fn source(&self) -> Source {
-        self.source.clone()
+    pub fn source(&self) -> &Source {
+        &self.source
     }
+
     pub fn name(&self) -> &str {
         &self.name
     }
 }
 
 impl Display for Identifier {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.name)
     }
 }

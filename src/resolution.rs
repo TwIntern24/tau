@@ -5,7 +5,7 @@ use crate::{
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
     },
-    error::{Diagnostic, Error, Result},
+    error::{Result, diagnostic, error},
     lexer::{Source, Token, TokenType},
     typing::{TypeCell, TypeDef, TypeNames, TypeTree},
 };
@@ -27,15 +27,21 @@ impl<'a> Resolution<'a> {
         }
     }
 
-    pub fn resolve(mut self, declarations: &'a Vec<Decl>) -> Result<Self> {
+    pub fn resolve(mut self, declarations: &'a Vec<Decl>) -> Result<TypeNames> {
+        let mut errors = Option::None;
         for decl in declarations {
-            self.visit_decl(decl)?;
+            if let Err(err) = self.visit_decl(decl) {
+                errors = err.after(errors);
+            }
         }
-        // When we create a new resolution, we already start in the global scope.
-        // After visiting all declarations, we need to end the global scope and
-        // push it to all scopes.
-        self.end_scope();
-        Ok(self)
+        if let Some(err) = errors {
+            return Err(err);
+        }
+        Ok(self
+            .scopes
+            .first()
+            .expect("expect number of closed scopes is not higher then open scopes")
+            .take())
     }
 
     fn declare_variable(&mut self, var_name: &Identifier, var_type: Rc<TypeDef>) -> Result<()> {
@@ -47,10 +53,10 @@ impl<'a> Resolution<'a> {
         .insert(var_name.to_string(), var_type)
         .is_some()
         {
-            return Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 format!("variable '{}' was already declared", var_name.name()),
                 var_name.source(),
-            )]));
+            ));
         }
         Ok(())
     }
@@ -66,10 +72,10 @@ impl<'a> Resolution<'a> {
                 var_type
             }
         } else {
-            Err(Error::new(vec![Diagnostic::new(
+            error(diagnostic(
                 format!("could not find variable '{}'", var_name.name()),
                 var_name.source(),
-            )]))
+            ))
         }
     }
 
@@ -78,16 +84,16 @@ impl<'a> Resolution<'a> {
             if let Some(ref_type) = structure.fields.get(member_name.name()) {
                 self.types.lookup_type(&ref_type.clone())
             } else {
-                Err(Error::new(vec![Diagnostic::new(
+                error(diagnostic(
                     format!("expected struct {lookup} contains field {member_name}"),
                     member_name.source(),
-                )]))
+                ))
             }
         } else {
-            Err(Error::new(vec![Diagnostic::new(
+            error(diagnostic(
                 format!("expected struct, got {lookup} which has no {member_name}"),
                 member_name.source(),
-            )]))
+            ))
         }
     }
 
@@ -106,10 +112,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
     fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> Self::Output {
         let throw_error = |msg: &str| {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 msg.to_string(),
-                Source::union(&operator.source(), &right.source()),
-            )]))
+                &Source::union(&operator.source(), &right.source()),
+            ));
         };
         let r = self.visit_expr(right)?;
         match operator.token_type() {
@@ -144,10 +150,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         right: &'a Rc<Expr>,
     ) -> Result<Rc<TypeDef>> {
         let throw_error = |msg: &str| {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 msg.to_string(),
-                Source::union(&left.source(), &right.source()),
-            )]))
+                &Source::union(&left.source(), &right.source()),
+            ));
         };
         let l = self.visit_expr(left)?;
         let r = self.visit_expr(right)?;
@@ -238,19 +244,19 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         if let TypeDef::Array(array_type) = &*l {
             let r = self.visit_expr(index)?;
             if !r.is_integer() {
-                Err(Error::new(vec![Diagnostic::new(
+                return error(diagnostic(
                     "index has to be an integer".to_string(),
                     index.source(),
-                )]))?;
+                ));
             }
-            let ref_type = self.types.lookup_type(array_type)?;
+            let ref_type = self.types.lookup_type(&array_type)?;
             *looup.borrow_mut() = ref_type.clone();
             Ok(ref_type)
         } else {
-            Err(Error::new(vec![Diagnostic::new(
+            error(diagnostic(
                 "expected to index into an array".to_string(),
                 object.source(),
-            )]))
+            ))
         }
     }
 
@@ -262,34 +268,34 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
         let callee_type = self.visit_expr(callee)?;
         if let TypeDef::Function(function) = &*callee_type {
             if arguments.len() != function.parameters.len() {
-                return Err(Error::new(vec![Diagnostic::new(
+                return error(diagnostic(
                     format!(
                         "expected {} arguments, got {}",
                         function.parameters.len(),
                         arguments.len()
                     ),
                     callee.source(),
-                )]));
+                ));
             }
 
             for (argument, para_type) in arguments.iter().zip(&function.parameters) {
                 let arg_type = self.visit_expr(argument)?;
                 if !arg_type.is_castable_to(&*self.types.lookup_type(para_type)?) {
-                    return Err(Error::new(vec![Diagnostic::new(
+                    return error(diagnostic(
                         format!(
                             "argument type '{}' supplied to function does not match parameter type '{}'",
                             arg_type, para_type
                         ),
                         callee.source(),
-                    )]));
+                    ));
                 }
             }
             self.types.lookup_type(&function.return_type)
         } else {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 "expected call a function".to_string(),
                 callee.source(),
-            )]))
+            ));
         }
     }
 
@@ -301,10 +307,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
     ) -> Result<Rc<TypeDef>> {
         if let Some(size_expr) = array_size {
             if !self.visit_expr(size_expr)?.is_integer() {
-                Err(Error::new(vec![Diagnostic::new(
+                return error(diagnostic(
                     "expected size of array to be an integer".to_string(),
                     size_expr.source(),
-                )]))?;
+                ));
             }
         }
         let ref_type = self.types.lookup_type(&array_type.borrow())?;
@@ -312,10 +318,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
         for field in fields {
             if !self.visit_expr(field)?.is_castable_to(&ref_type) {
-                Err(Error::new(vec![Diagnostic::new(
+                return error(diagnostic(
                     "expected size of array to be an integer".to_string(),
                     field.source(),
-                )]))?;
+                ));
             }
         }
 
@@ -333,12 +339,12 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             let field_type = self.visit_expr(field_expr)?;
             let expected_type = &*self.member(ref_type.clone(), field_name)?;
             if !field_type.is_castable_to(expected_type) {
-                Err(Error::new(vec![Diagnostic::new(
+                return error(diagnostic(
                     format!(
                         "could not cast parameter {field_name} of type {field_type} to {expected_type}"
                     ),
                     field_expr.source(),
-                )]))?;
+                ));
             }
         }
         *struct_type.borrow_mut() = ref_type.clone();
@@ -370,21 +376,21 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                                 return Ok(if_type);
                             }
 
-                            Err(Error::new(vec![Diagnostic::new(
+                            return error(diagnostic(
                                 format!(
                                     "if branch returns {if_type} while else branch returns {else_type}"
                                 ),
-                                Source::union(&condition.source(), &else_branch.source()),
-                            )]))?
+                                &Source::union(&condition.source(), &else_branch.source()),
+                            ));
                         }
                         Ok(None) => {
                             let void = self.types.lookup_name("void");
                             if if_type != void {
-                                Err(Error::new(vec![Diagnostic::new(
+                                return error(diagnostic(
                                     "if branch returns {if_type} while else branch returns nothing"
                                         .to_string(),
-                                    Source::union(&condition.source(), &else_branch.source()),
-                                )]))?
+                                    &Source::union(&condition.source(), &else_branch.source()),
+                                ));
                             }
                             Ok(void)
                         }
@@ -392,10 +398,10 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                         Err(e) => Err(e),
                     }
                 } else {
-                    Err(Error::new(vec![Diagnostic::new(
+                    return error(diagnostic(
                         "if expression expected else branch".to_string(),
-                        Source::union(&condition.source(), &if_branch.source()),
-                    )]))?
+                        &Source::union(&condition.source(), &if_branch.source()),
+                    ));
                 }
             }
             Err(_) => todo!(),
@@ -430,10 +436,10 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
         self.begin_scope();
         for stmt in statements {
             if self.return_type.is_some() {
-                return Err(Error::new(vec![Diagnostic::new(
+                return error(diagnostic(
                     "function has already returned".to_string(),
                     stmt.source(),
-                )]));
+                ));
             }
             if let Err(err) = self.visit_stmt(stmt) {
                 errors = err.after(errors);
@@ -461,10 +467,10 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
             self.declare_variable(name, expected_type.clone())?;
             *var_type.borrow_mut() = expected_type;
         } else {
-            return Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 format!("expr type {real_type} can not be cast to {expected_type}"),
                 initializer.source(),
-            )]));
+            ));
         }
         Ok(None)
     }
@@ -481,10 +487,10 @@ impl<'a> StmtVisitor<'a> for Resolution<'a> {
     fn visit_while(&mut self, condition: &'a Expr, body: &'a Rc<Stmt>) -> Self::Output {
         self.begin_scope();
         if !self.visit_expr(condition)?.is_bool() {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 "expected while confition to be boolean".to_string(),
                 condition.source(),
-            )]))?
+            ));
         }
         self.visit_stmt(body)?;
         self.end_scope();
@@ -526,10 +532,10 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
 
     fn visit_function(&mut self, function: &'a Function) -> Self::Output {
         if self.return_type.is_some() {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 "return type already exists before body was defined".to_string(),
                 function.name.source(),
-            )]))?;
+            ));
         }
         let ref_type = self
             .types
@@ -570,10 +576,10 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
                 .unwrap_or_else(|| self.types.lookup_name("void")),
         )?;
         if !real.is_castable_to(ref_type.as_ref()) {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 format!("could not cast return type {} to {}", real, ref_type),
                 function.name.source(),
-            )]))?;
+            ));
         }
         self.return_type = None;
         self.end_scope();
@@ -587,15 +593,15 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
         initializer: &'a Expr,
     ) -> Self::Output {
         let expected = self.types.lookup_type(&var_type.borrow().clone())?;
-        let actual = self.visit_expr(initializer).unwrap();
+        let actual = self.visit_expr(initializer)?;
         if !actual.is_castable_to(&expected) {
-            Err(Error::new(vec![Diagnostic::new(
+            return error(diagnostic(
                 format!(
                     "const '{}' has the type {}, but was declared as {}",
                     var_name, actual, expected
                 ),
-                Source::union(&var_name.source(), &initializer.source()),
-            )]))?;
+                &Source::union(&var_name.source(), &initializer.source()),
+            ));
         }
         *var_type.borrow_mut() = actual;
         Ok(())

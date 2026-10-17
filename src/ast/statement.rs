@@ -15,8 +15,8 @@ impl Stmt {
     pub fn new(source: Source, kind: StmtType) -> Self {
         Stmt { kind, source }
     }
-    pub fn source(&self) -> Source {
-        self.source.clone()
+    pub fn source(&self) -> &Source {
+        &self.source
     }
     pub fn kind(&self) -> &StmtType {
         &self.kind

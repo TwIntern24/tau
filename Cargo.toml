@@ -10,6 +10,8 @@ rust-version = "1.85"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+codespan-reporting = "0.13.1"
+term = "1.2.1"
 
 [profile.release]
 debug = "line-tables-only"

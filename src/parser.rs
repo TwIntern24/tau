@@ -5,7 +5,7 @@ use crate::{
         identifier::Identifier,
         statement::{Stmt, StmtType},
     },
-    error::{Result, parser_expected},
+    error::{Result, diagnostic, error},
     lexer::{Source, Token, TokenType},
     typing::{self, TypeDef},
 };
@@ -41,10 +41,7 @@ impl Parser {
     pub(crate) fn decl(&mut self) -> Result<Decl> {
         let token = self.advance();
         if token.token_type() == &TokenType::Eof {
-            return Err(parser_expected(
-                "Found end of File but expected a token",
-                token,
-            ));
+            return error(diagnostic("Found end of File but expected a token", &token));
         }
         match token.token_type() {
             TokenType::Const => self.decl_const(),
@@ -59,9 +56,9 @@ impl Parser {
             TokenType::Function => self.decl_function(Modifiers::default()),
             TokenType::Import => self.decl_import(),
             TokenType::Struct => self.decl_struct(),
-            token_type => Err(parser_expected(
+            token_type => error(diagnostic(
                 format!("Found {:?} expected declaration", &token_type),
-                token,
+                &token,
             )),
         }
     }
@@ -82,7 +79,7 @@ impl Parser {
         match token.token_type() {
             TokenType::Extern => {
                 if modifiers.is_extern {
-                    Err(parser_expected("function is already extern", token))
+                    error(diagnostic("function is already extern", &token))
                 } else {
                     self.decl_modifier(Modifiers {
                         is_extern: true,
@@ -92,7 +89,7 @@ impl Parser {
             }
             TokenType::Io => {
                 if modifiers.is_io {
-                    Err(parser_expected("function is already io", token))
+                    error(diagnostic("function is already io", &token))
                 } else {
                     self.decl_modifier(Modifiers {
                         is_extern: true,
@@ -101,9 +98,9 @@ impl Parser {
                 }
             }
             TokenType::Function => self.decl_function(modifiers),
-            _ => Err(parser_expected(
+            _ => error(diagnostic(
                 "unexpected return type, expected modifier or function",
-                token,
+                &token,
             )),
         }
     }
@@ -111,7 +108,7 @@ impl Parser {
     fn decl_function(&mut self, modifiers: Modifiers) -> Result<Decl> {
         let name = self.advance();
         if !name.token_type().is_identifer() {
-            return Err(parser_expected("expected an function identifier", name));
+            return error(diagnostic("expected an function identifier", &name));
         }
 
         self.consume(&TokenType::ParenLeft)?;
@@ -132,7 +129,7 @@ impl Parser {
                 "void".to_string(),
                 // TODO: replace source with None, as we can not find any source for an implicit
                 // token. Maybe make source optional?
-                end.source(),
+                end.into(),
             )]))
         };
 
@@ -169,7 +166,10 @@ impl Parser {
                 self.consume(&TokenType::In)?;
             }
             let value = self.expr()?;
-            body.push(Stmt::new(value.source(), StmtType::Return { value }));
+            body.push(Stmt::new(
+                value.source().clone(),
+                StmtType::Return { value },
+            ));
         }
         Ok(body)
     }
@@ -190,7 +190,7 @@ impl Parser {
     fn decl_struct(&mut self) -> Result<Decl> {
         let name = self.advance();
         if !name.token_type().is_identifer() {
-            return Err(parser_expected("expected a struct identifier", name));
+            return error(diagnostic("expected a struct identifier", &name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
@@ -213,7 +213,7 @@ impl Parser {
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
         let name = self.advance();
         if !name.token_type().is_identifer() {
-            return Err(parser_expected("expected a type identifier", name));
+            return error(diagnostic("expected a type identifier", &name));
         }
         self.consume(&TokenType::Colon)?;
         let type_def = self.decl_type()?;
@@ -255,7 +255,7 @@ impl Parser {
                     return_type,
                 })))
             }
-            _ => Err(parser_expected("expected a type definition", next)),
+            _ => error(diagnostic("expected a type definition", &next)),
         }
     }
 
@@ -275,7 +275,7 @@ impl Parser {
             }
             TokenType::Break => {
                 let current = self.advance();
-                Ok(Stmt::new(current.source(), StmtType::Break))
+                Ok(Stmt::new(current.into(), StmtType::Break))
             }
             TokenType::For => self.stmt_for(),
             TokenType::While => self.stmt_while(),
@@ -329,7 +329,7 @@ impl Parser {
             (self.advance(), self.advance())
         };
         if !name.token_type().is_identifer() {
-            return Err(parser_expected("expected a variable identifier", name));
+            return error(diagnostic("expected a variable identifier", name.source()));
         }
         let var_type = if *self.peek().token_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
@@ -368,12 +368,12 @@ impl Parser {
                         StmtType::While {
                             condition,
                             body: Rc::new(Stmt::new(
-                                body.source(),
+                                body.source().clone(),
                                 StmtType::Block {
                                     statements: vec![
                                         body,
                                         Rc::new(Stmt::new(
-                                            increment.source(),
+                                            increment.source().clone(),
                                             StmtType::ExprStmt(increment),
                                         )),
                                     ],
@@ -452,9 +452,9 @@ impl Parser {
             }
             TokenType::ParenLeft => self.expr_grouping(),
             TokenType::If => self.expr_if(),
-            x => Err(parser_expected(
+            x => error(diagnostic(
                 format!("found {:?} expected expression", x),
-                next,
+                next.source(),
             ))?,
         }
     }
@@ -476,7 +476,10 @@ impl Parser {
         if *next.token_type() == TokenType::Dot {
             let rhs = self.advance();
             if !rhs.token_type().is_identifer() {
-                return Err(parser_expected("expected an identidier on the RHS", rhs));
+                return error(diagnostic(
+                    "expected an identidier on the RHS",
+                    rhs.source(),
+                ));
             }
             Ok(Expr::new(
                 Source::union(&lhs.source(), &rhs.source()),
@@ -532,7 +535,7 @@ impl Parser {
             } else {
                 let kind = ExprKind::Index {
                     object: Rc::new(Expr::new(
-                        current.source(),
+                        current.source().clone(),
                         ExprKind::Variable {
                             name: Identifier::from(next),
                             variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
@@ -541,7 +544,7 @@ impl Parser {
                     index: expr,
                     lookup: RefCell::new(Rc::new(TypeDef::Unknown)),
                 };
-                Ok(Expr::new(current.source(), kind))
+                Ok(Expr::new(current.source().clone(), kind))
             }
         }
     }
@@ -590,9 +593,9 @@ impl Parser {
         while *self.peek().token_type() != TokenType::BraceRight {
             let name = self.advance();
             if !name.token_type().is_identifer() {
-                return Err(parser_expected(
+                return error(diagnostic(
                     "expected field name identifier for the struct",
-                    name,
+                    name.source(),
                 ));
             }
             self.consume(&TokenType::Set)?;
@@ -629,7 +632,7 @@ impl Parser {
             TokenType::BraceLeft => self.expr_create_struct(next),
             TokenType::BracketLeft => self.expr_create_or_index(next),
             _ => Ok(Expr::new(
-                next.source(),
+                next.source().clone(),
                 ExprKind::Variable {
                     name: Identifier::from(next),
                     variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
@@ -662,12 +665,12 @@ impl Parser {
     }
 
     fn expr_literal(&mut self, next: Token) -> Result<Expr> {
-        Ok(Expr::new(next.source(), ExprKind::Literal(next)))
+        Ok(Expr::new(next.source().clone(), ExprKind::Literal(next)))
     }
 
     fn expr_self(&mut self, next: Token) -> Result<Expr> {
         Ok(Expr::new(
-            next.source(),
+            next.source().clone(),
             ExprKind::Variable {
                 name: Identifier::from(next),
                 variable_type: RefCell::new(Rc::new(TypeDef::Unknown)),
@@ -718,13 +721,13 @@ impl Parser {
         let next = self.advance();
         if next.token_type() != expected {
             // The consumed token was not of the expected type
-            return Err(crate::error::parser_expected(
+            return error(diagnostic(
                 format!(
                     "expected {:?} but found {:?}",
                     expected.clone(),
                     next.token_type().clone()
                 ),
-                next,
+                next.source(),
             ));
         }
         Ok(next)

@@ -1,32 +1,25 @@
-use crate::lexer::{Lexer, Source, Token};
+use crate::lexer::Source;
+use codespan_reporting::{
+    diagnostic::{Diagnostic, Label},
+    files::SimpleFiles,
+};
 use std::{
-    error,
-    fmt::{self, Debug, Display, Formatter},
-    result,
+    fmt::{Debug, Display},
+    path, result,
 };
 
+/// All results throw our error type.
 pub type Result<T> = result::Result<T, Error>;
 
-pub(crate) fn parser_expected(expected: impl ToString, next: Token) -> Error {
-    Error::new(vec![Diagnostic::new(expected.to_string(), next.source())])
-}
+/// The file database that we currently use. This may change in the future.
+pub type FileDb<'a> = SimpleFiles<&'a path::Display<'a>, &'a str>;
+pub type FileId = usize; // <FileDb as Files>::FileId
 
-pub(crate) fn lexer_expected(expected: impl ToString, lexer: &Lexer) -> Error {
-    Error::new(vec![Diagnostic::new(
-        expected.to_string(),
-        lexer.make_source(),
-    )])
-}
-
-const RESET: &str = "\x1b[0m";
-const BOLD: &str = "\x1b[1m";
-const RED: &str = "\x1b[31m";
-const BLUE: &str = "\x1b[34m";
-
-pub struct Error(Vec<Diagnostic>);
+#[derive(Debug)]
+pub struct Error(Vec<Diagnostic<FileId>>);
 
 impl Error {
-    pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
+    pub fn new(diagnostics: Vec<Diagnostic<FileId>>) -> Self {
         Error(diagnostics)
     }
 
@@ -43,47 +36,24 @@ impl Error {
         }
         Some(self)
     }
-}
 
-impl error::Error for Error {}
-
-impl Debug for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        std::fmt::Display::fmt(&self, f)
+    pub fn diagnostics(&self) -> &Vec<Diagnostic<FileId>> {
+        &self.0
     }
 }
 
-impl Display for Error {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        for diagnostic in &self.0 {
-            std::fmt::Display::fmt(diagnostic, formatter)?;
-        }
-        Ok(())
-    }
+pub fn diagnostic<'a>(message: impl Display, source: impl Into<&'a Source>) -> Diagnostic<FileId> {
+    let source = source.into();
+    Diagnostic::error()
+        .with_message(message)
+        .with_label(Label::primary(source.file_id(), source.range()))
 }
 
-#[derive(Debug)]
-pub struct Diagnostic {
-    message: String,
-    source: Source,
+pub fn label<'a>(message: impl Display, source: impl Into<&'a Source>) -> Label<FileId> {
+    let source = source.into();
+    Label::secondary(source.file_id(), source.range()).with_message(message)
 }
 
-impl Diagnostic {
-    pub fn new(message: String, source: Source) -> Diagnostic {
-        Diagnostic { message, source }
-    }
-}
-
-impl Display for Diagnostic {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), fmt::Error> {
-        write!(formatter, "\n {BOLD}{BLUE}-->{RESET} {}\n", self.source)?;
-        for line in self.source.content().expect("File exists").split("\n") {
-            write!(formatter, "  {BOLD}{BLUE}|{RESET} {}\n", line)?;
-        }
-        write!(
-            formatter,
-            "  {BOLD}{BLUE}|{RESET}{RED}  ^ {}{RESET}",
-            self.message
-        )
-    }
+pub fn error<T>(diagnostic: Diagnostic<FileId>) -> Result<T> {
+    Err(Error(vec![diagnostic]))
 }

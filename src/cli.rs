@@ -2,7 +2,6 @@ use std::{
     collections::HashSet,
     path::{Path, PathBuf},
     process::exit,
-    rc::Rc,
     vec::IntoIter,
 };
 
@@ -36,13 +35,13 @@ pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
 // TODO: maybe use https://doc.rust-lang.org/std/sync/struct.OnceLock.html
 #[derive(Default)]
 pub struct Args {
-    input: HashSet<Rc<PathBuf>>,
+    input: HashSet<String>,
     output: PathBuf,
     target: Target,
 }
 
 impl Args {
-    pub fn input(&self) -> &HashSet<Rc<PathBuf>> {
+    pub fn input(&self) -> &HashSet<String> {
         &self.input
     }
 
@@ -120,13 +119,8 @@ impl ArgsBuilder {
         T: Into<Option<String>>,
     {
         if let Some(input) = next.into() {
-            let path_buf = PathBuf::from(input);
-            if path_buf.exists() {
-                self.args.input.insert(Rc::new(path_buf));
-                Ok(())
-            } else {
-                Err("input file {} does not exists".into())
-            }
+            self.args.input.insert(input);
+            Ok(())
         } else {
             Err("no input specified".into())
         }

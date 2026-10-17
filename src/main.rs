@@ -1,8 +1,4 @@
 #![allow(clippy::needless_return)]
-use codespan_reporting::diagnostic::Diagnostic;
-use codespan_reporting::term;
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-
 use crate::{
     ast::declaration::Decl,
     cli::{ArgsBuilder, HELP_MESSAGE},
@@ -11,14 +7,18 @@ use crate::{
         cpp::{CppCodeGenerator, CppHeaderGenerator},
         set_output,
     },
-    error::{FileDb, FileId, Result, error},
+    error::{FileDb, FileId, Result},
     header::Header,
     lexer::Lexer,
     parser::Parser,
     resolution::Resolution,
     typing::{TypeNames, TypeTree},
 };
-use std::{env, fs, path::PathBuf};
+use codespan_reporting::term::{
+    self,
+    termcolor::{ColorChoice, StandardStream},
+};
+use std::{env, fs, path::PathBuf, process::exit};
 
 mod ast;
 mod cli;
@@ -30,7 +30,9 @@ mod parser;
 mod resolution;
 mod typing;
 
-fn main() -> Result<()> {
+type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
+
+fn main() -> DynResult {
     let args = ArgsBuilder::new()
         .parse(env::args().collect())
         .unwrap()
@@ -46,7 +48,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn compile_file(filename: &str, args: &cli::Args) -> Result<()> {
+fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
     let filename = PathBuf::from(filename);
     if let Ok(content) = fs::read_to_string(&filename) {
         let mut files = FileDb::new();
@@ -57,9 +59,13 @@ fn compile_file(filename: &str, args: &cli::Args) -> Result<()> {
                 cli::Target::Cpp => {
                     let compiler = Compiler::new(&ast);
                     let header_output = set_output(filename.as_ref(), args.output(), "hpp");
-                    compiler.compile(CppHeaderGenerator, &header_output)?;
+                    compiler
+                        .compile(CppHeaderGenerator, &header_output)
+                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
                     let code_output = set_output(filename.as_ref(), args.output(), "cpp");
-                    compiler.compile(CppCodeGenerator::new(), &code_output)?;
+                    compiler
+                        .compile(CppCodeGenerator::new(), &code_output)
+                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)
                 }
                 cli::Target::Cranelift => unimplemented!(),
             },
@@ -68,17 +74,15 @@ fn compile_file(filename: &str, args: &cli::Args) -> Result<()> {
                     let writer = StandardStream::stderr(ColorChoice::Always);
                     let config = codespan_reporting::term::Config::default();
 
-                    let _ =
-                        term::emit_to_io_write(&mut writer.lock(), &config, &files, &diagnostic);
+                    term::emit_to_io_write(&mut writer.lock(), &config, &files, &diagnostic)
+                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
                 }
+                Ok(())
             }
         }
-        Ok(())
     } else {
-        return error(Diagnostic::error().with_message(format!(
-            "tau: cannot access {}: No such file",
-            filename.display()
-        )));
+        println!("tau: cannot access {}: No such file", filename.display());
+        exit(1);
     }
 }
 
@@ -94,23 +98,23 @@ fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl>, TypeTree, 
 
 #[cfg(test)]
 mod tests {
-    use super::compile_file;
+    use super::{DynResult, compile_file};
     use crate::{cli::ArgsBuilder, error::Result, lexer::Lexer, parser::Parser};
 
     #[test]
-    fn pipeline_arrays() -> Result<()> {
+    fn pipeline_arrays() -> DynResult {
         let args = ArgsBuilder::new().build();
         compile_file("examples/arrays.tau", &args)
     }
 
     #[test]
-    fn pipeline_heap() -> Result<()> {
+    fn pipeline_heap() -> DynResult {
         let args = ArgsBuilder::new().build();
         compile_file("examples/heap.tau", &args)
     }
 
     #[test]
-    fn pipeline_vec2() -> Result<()> {
+    fn pipeline_vec2() -> DynResult {
         let args = ArgsBuilder::new().build();
         compile_file("examples/vec2.tau", &args)
     }

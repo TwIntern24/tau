@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor},
+        declaration::{Decl, DeclVisitor, Function, Structure},
         expression::{Expr, ExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
@@ -29,42 +29,50 @@ impl Display for CppSourceCode {
 impl From<&TypeDef> for CppSourceCode {
     fn from(type_def: &TypeDef) -> Self {
         CppSourceCode(match type_def {
-            TypeDef::Struct { name, members: _ } => format!("{}*", name),
-            TypeDef::Function {
-                parameters: _,
-                return_type: _,
-            } => todo!(),
+            TypeDef::Struct(structure) => {
+                let mut path = String::new();
+                path.push_str(structure.name[0].name());
+                for item in &structure.name[1..] {
+                    path.push_str("::");
+                    path.push_str(item.name());
+                }
+                path.into()
+            }
+            TypeDef::Function(_) => todo!(),
             TypeDef::Array(name) => format!("{}*", CppSourceCode::from(name.as_ref())),
-            TypeDef::Lazy(name) => panic!("lazy '{}' should have been deref", name),
-            TypeDef::Number {
-                name,
-                size: _,
-                float: _,
-                signed: _,
-            } => String::from(match *name {
-                "i8" => "char",
-                "i16" => "short",
-                "i32" => "int",
-                "i64" => "long",
-                "u8" => "unsigned char",
-                "u16" => "unsigned short",
-                "u32" => "unsigned int",
-                "u64" => "unsigned long",
-                "f32" => "float",
-                "f64" => "double",
-                _ => panic!(),
-            }),
+            TypeDef::Path(name) => panic!("path '{:?}' should have been deref", name),
+            TypeDef::Number(number) => {
+                if number.float {
+                    match number.size {
+                        32 => "float",
+                        64 => "double",
+                        _ => unreachable!(),
+                    }
+                    .into()
+                } else {
+                    let int = match number.size {
+                        8 => "char",
+                        16 => "short",
+                        32 => "int",
+                        64 => "long",
+                        _ => unreachable!(),
+                    };
+                    if number.signed {
+                        int.into()
+                    } else {
+                        format!("unsigned {int}")
+                    }
+                }
+            }
             TypeDef::Native(name) => String::from(match *name {
                 "str" => "char*",
                 "bool" => "int",
                 "void" => "void",
-                _ => panic!(),
+                _ => unreachable!(),
             }),
-            TypeDef::Module {
-                types: _,
-                fields: _,
-            }
-            | TypeDef::Unknown => panic!(),
+            TypeDef::RawPointer(ptr) => format!("{}*", CppSourceCode::from(ptr.as_ref())),
+            TypeDef::Any => "void".into(),
+            other => panic!("unhandled type: {}", other),
         })
     }
 }
@@ -115,23 +123,8 @@ where
 
 pub struct CppHeaderGenerator;
 
-impl CppHeaderGenerator {
-    fn visit_method(
-        &mut self,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-    ) -> CppSourceCode {
-        let return_type = CppSourceCode::from(return_type.borrow().as_ref());
-        let name = CppSourceCode::from(name);
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
-        CppSourceCode(format!("{return_type} {name}({params});"))
-    }
-}
-
 impl<'a> Generator<'a> for CppHeaderGenerator {
     fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
-        // TODO:
         let mut file = File::create(output).expect("error reading file");
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
@@ -165,49 +158,37 @@ impl DeclVisitor<'_> for CppHeaderGenerator {
         CppSourceCode(format!("#include <{path}.hpp>"))
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &Identifier,
-        fields: &[(Identifier, TypeCell)],
-        methods: &[Rc<Decl>],
-    ) -> CppSourceCode {
-        let name = CppSourceCode::from(name);
-        let fields = visit_vec(fields, |x| format!("  {};", CppSourceCode::from(x)), "\n");
-        let methods = visit_vec(
-            methods,
-            |decl| {
-                if let Decl::Function {
-                    name,
-                    return_type,
-                    params,
-                    body: _,
-                    is_extern: _,
-                    is_io: _,
-                } = decl.as_ref()
-                {
-                    format!("  {}", self.visit_method(name, return_type, params))
-                } else {
-                    panic!()
-                }
-            },
-            "\n",
-        );
-        format!("class {name} {{\npublic:\n{fields}\n{methods}\n}};").into()
+    fn visit_struct(&mut self, structure: &Structure) -> CppSourceCode {
+        let name = CppSourceCode::from(&structure.name);
+        let fields = structure
+            .fields
+            .iter()
+            .map(|pair| {
+                let (param_name, param_type) = pair;
+                format!(
+                    "{} {};",
+                    CppSourceCode::from(param_type),
+                    CppSourceCode::from(param_name)
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        format!("class {name} {{\npublic:\n{fields}}};").into()
     }
 
-    fn visit_function(
-        &mut self,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-        _: &[Stmt],
-        is_extern: bool,
-        _: bool,
-    ) -> CppSourceCode {
-        let name = CppSourceCode::from(name);
-        let is_extern = if is_extern { "\"C\" " } else { "" };
-        let return_type = CppSourceCode::from(return_type.borrow().as_ref());
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
+    fn visit_function(&mut self, function: &Function) -> CppSourceCode {
+        let name = CppSourceCode::from(&function.name);
+        let is_extern = if function.modifiers.is_extern {
+            "\"C\" "
+        } else {
+            ""
+        };
+        let return_type = CppSourceCode::from(function.return_type.borrow().as_ref());
+        let params = visit_vec(
+            &function.params,
+            |x| format!("{}", CppSourceCode::from(x)),
+            ", ",
+        );
         CppSourceCode(format!("extern {is_extern}{return_type} {name}({params});"))
     }
 
@@ -240,23 +221,6 @@ impl<'a> CppCodeGenerator {
             _ => panic!("unsupported return type"),
         };
         format!("int main() {{\n{body}}}\n").into()
-    }
-
-    fn visit_method(
-        &mut self,
-        struct_name: &Identifier,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-        body: &'a [Stmt],
-        _: bool,
-    ) -> CppSourceCode {
-        let struct_name = CppSourceCode::from(struct_name);
-        let name = CppSourceCode::from(name);
-        let return_type = CppSourceCode::from(return_type);
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
-        let body = visit_vec(body, |stmt| format!("{}", self.visit_stmt(stmt)), "\n");
-        format!("{return_type} {struct_name}::{name}({params}) {{\n{body}\n}}").into()
     }
 }
 
@@ -296,6 +260,8 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
             TokenType::Sub => format!("-{}", self.visit_expr(right)),
             TokenType::Not => format!("!{}", self.visit_expr(right)),
+            TokenType::Star => format!("(*{})", self.visit_expr(right)),
+            TokenType::Ref => format!("(&{})", self.visit_expr(right)),
             _ => todo!(),
         }
         .into()
@@ -312,7 +278,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         match operator.token_type() {
             TokenType::Add => render_op("+"),
             TokenType::Sub => render_op("-"),
-            TokenType::Mul => render_op("*"),
+            TokenType::Star => render_op("*"),
             TokenType::Div => render_op("/"),
             TokenType::Eq => render_op("=="),
             TokenType::Neq => render_op("!="),
@@ -322,11 +288,11 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
             TokenType::Geq => render_op(">="),
             TokenType::And => render_op("&&"),
             TokenType::Or => render_op("||"),
-            TokenType::Xor => render_op("|"),
+            TokenType::Vbar => render_op("|"),
             TokenType::Set => render_op("="),
             TokenType::SetAdd => render_op("+="),
             TokenType::SetSub => render_op("-="),
-            TokenType::SetMul => render_op("*="),
+            TokenType::SetStar => render_op("*="),
             TokenType::SetDiv => render_op("/="),
             _ => todo!("{:?}", operator),
         }
@@ -342,14 +308,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         let left = self.visit_expr(left);
         let right = right.name();
         match lookup.borrow().as_ref() {
-            TypeDef::Struct {
-                name: _,
-                members: _,
-            } => format!("{}->{}", left, right),
-            TypeDef::Module {
-                types: _,
-                fields: _,
-            } => format!("{}::{}", left, right),
+            TypeDef::Struct(_) => format!("{}.{}", left, right),
             error => panic!(
                 "can only lookup structs and modules, not {:?} at {:?} with {:?}",
                 error, left, right
@@ -399,12 +358,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
         struct_type: &TypeCell,
         fields: &'a [(Identifier, Rc<Expr>)],
     ) -> CppSourceCode {
-        let struct_type = struct_type.borrow();
-        let struct_type = if let TypeDef::Struct { name, members: _ } = struct_type.as_ref() {
-            name.name()
-        } else {
-            unreachable!()
-        };
+        let struct_type: CppSourceCode = struct_type.into();
         let fields = visit_vec(
             fields,
             |(field_name, field_init)| {
@@ -416,7 +370,7 @@ impl<'a> ExprVisitor<'a> for CppCodeGenerator {
             },
             ", ",
         );
-        format!("new {struct_type}{{{fields}}}").into()
+        format!("{struct_type}{{{fields}}}").into()
     }
 
     fn visit_if(
@@ -498,20 +452,6 @@ impl<'a> StmtVisitor<'a> for CppCodeGenerator {
         format!("while ({condition}) {body}").into()
     }
 
-    fn visit_for(
-        &mut self,
-        initializer: &'a Rc<Stmt>,
-        condition: &'a Expr,
-        increment: &'a Expr,
-        body: &'a Rc<Stmt>,
-    ) -> Self::Output {
-        let initializer = self.visit_stmt(initializer);
-        let condition = self.visit_expr(condition);
-        let increment = self.visit_expr(increment);
-        let body = self.visit_stmt(body);
-        format!("for ({initializer}; {condition}; {increment}) {body}").into()
-    }
-
     fn visit_expr_stmt(&mut self, expr: &'a Expr) -> Self::Output {
         let expr = self.visit_expr(expr);
         format!("{expr};").into()
@@ -525,60 +465,25 @@ impl<'a> DeclVisitor<'a> for CppCodeGenerator {
         CppSourceCode::default()
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &Identifier,
-        _: &[(Identifier, TypeCell)],
-        methods: &'a [Rc<Decl>],
-    ) -> CppSourceCode {
-        let struct_type = name;
-        visit_vec(
-            methods,
-            |method| {
-                if let Decl::Function {
-                    name,
-                    return_type,
-                    params,
-                    body,
-                    is_extern,
-                    is_io: _,
-                } = method.as_ref()
-                {
-                    format!("{}", self.visit_method(
-                    struct_type,
-                    name,
-                    return_type,
-                    params,
-                    body,
-                    *is_extern,
-                ))
-                } else {
-                    panic!("expected method")
-                }
-            },
-            "\n",
-        )
+    fn visit_struct(&mut self, _: &Structure) -> CppSourceCode {
+        CppSourceCode::default()
     }
 
-    fn visit_function(
-        &mut self,
-        name: &Identifier,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-        body: &'_ [Stmt],
-        is_extern: bool,
-        _: bool,
-    ) -> Self::Output {
-        if name.name() == "main" {
-            self.main_type = Some(return_type.borrow().clone())
+    fn visit_function(&mut self, function: &Function) -> Self::Output {
+        if function.name.name() == "main" {
+            self.main_type = Some(function.return_type.borrow().clone())
         }
-        if is_extern {
+        if function.modifiers.is_extern {
             return CppSourceCode::default();
         }
-        let name = CppSourceCode::from(name);
-        let return_type = CppSourceCode::from(return_type);
-        let params = visit_vec(params, |x| format!("{}", CppSourceCode::from(x)), ", ");
-        let body = visit_vec(body, |x| format!("{}", self.visit_stmt(x)), "\n");
+        let name = CppSourceCode::from(&function.name);
+        let return_type = CppSourceCode::from(&function.return_type);
+        let params = visit_vec(
+            &function.params,
+            |x| format!("{}", CppSourceCode::from(x)),
+            ", ",
+        );
+        let body = visit_vec(&function.body, |x| format!("{}", self.visit_stmt(x)), "\n");
         format!("{return_type} {name} ({params}) {{\n{body}\n}}").into()
     }
 

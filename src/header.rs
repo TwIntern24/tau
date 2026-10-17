@@ -2,71 +2,25 @@ use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 use crate::{
     ast::{
-        declaration::{Decl, DeclVisitor},
+        declaration::{Decl, DeclVisitor, Function, Structure},
         expression::Expr,
         identifier::Identifier,
-        statement::Stmt,
     },
     lexer::Lexer,
     parser::Parser,
-    typing::{TypeCell, TypeDef, TypeNames},
+    typing::{self, TypeCell, TypeDef, TypeNames, TypeTree},
 };
 
 pub struct Header {
-    types: TypeNames,
-    fields: TypeNames,
+    types: TypeTree,
+    scope: TypeNames,
 }
 
 impl Header {
     pub fn new() -> Header {
         Header {
-            types: HashMap::from([
-                (
-                    "u8".to_string(),
-                    Rc::new(TypeDef::make_number("u8", 1, false, false)),
-                ),
-                (
-                    "u16".to_string(),
-                    Rc::new(TypeDef::make_number("u16", 2, false, false)),
-                ),
-                (
-                    "u32".to_string(),
-                    Rc::new(TypeDef::make_number("u32", 4, false, false)),
-                ),
-                (
-                    "u64".to_string(),
-                    Rc::new(TypeDef::make_number("u64", 8, false, false)),
-                ),
-                (
-                    "i8".to_string(),
-                    Rc::new(TypeDef::make_number("i8", 1, false, true)),
-                ),
-                (
-                    "i16".to_string(),
-                    Rc::new(TypeDef::make_number("i16", 2, false, true)),
-                ),
-                (
-                    "i32".to_string(),
-                    Rc::new(TypeDef::make_number("i32", 4, false, true)),
-                ),
-                (
-                    "i64".to_string(),
-                    Rc::new(TypeDef::make_number("i64", 8, false, true)),
-                ),
-                (
-                    "f32".to_string(),
-                    Rc::new(TypeDef::make_number("f32", 4, true, true)),
-                ),
-                (
-                    "f64".to_string(),
-                    Rc::new(TypeDef::make_number("f64", 8, true, true)),
-                ),
-                ("bool".to_string(), Rc::new(TypeDef::Native("bool"))),
-                ("char".to_string(), Rc::new(TypeDef::Native("char"))),
-                ("str".to_string(), Rc::new(TypeDef::Native("str"))),
-                ("void".to_string(), Rc::new(TypeDef::Native("void"))),
-            ]),
-            fields: HashMap::new(),
+            types: TypeTree::new(),
+            scope: HashMap::new(),
         }
     }
 
@@ -77,24 +31,8 @@ impl Header {
         self
     }
 
-    pub fn analysed(self) -> (TypeNames, TypeNames) {
-        (self.types, self.fields)
-    }
-
-    fn make_function_type(
-        &self,
-        return_type: &TypeCell,
-        params: &[(Identifier, TypeCell)],
-    ) -> Rc<TypeDef> {
-        let mut parameters = Vec::new();
-        for (_, param_type) in params {
-            parameters.push(param_type.borrow().clone());
-        }
-
-        Rc::new(TypeDef::Function {
-            parameters,
-            return_type: return_type.borrow().clone(),
-        })
+    pub fn analysed(self) -> (TypeTree, TypeNames) {
+        (self.types, self.scope)
     }
 }
 
@@ -102,12 +40,10 @@ impl<'a> DeclVisitor<'a> for Header {
     type Output = ();
 
     fn visit_import(&mut self, path: &[Identifier]) {
-        let mut module_name = "";
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
                 filename.push(name.name());
-                module_name = name.name();
             }
             filename.set_extension("tau");
             filename
@@ -115,69 +51,52 @@ impl<'a> DeclVisitor<'a> for Header {
         let content = fs::read_to_string(&filename).expect("Expected to open file");
         let lexer = Lexer::new(content.chars(), Rc::new(filename));
         let parser = Parser::new(lexer.scan().unwrap());
-        // FIX:
+
         let ast = parser.parse().unwrap();
         let header = Header::new().headers(&ast);
-        let (types, fields) = header.analysed();
-        self.fields.insert(
-            module_name.to_string(),
-            Rc::new(TypeDef::Module { types, fields }),
-        );
+        let (types, scope) = header.analysed();
+        // TODO: error handling
+        self.types
+            .insert_tree(path.last().unwrap().to_string(), types);
+        self.scope.extend(scope);
     }
 
-    fn visit_struct(
-        &mut self,
-        name: &'a Identifier,
-        fields: &'a [(Identifier, TypeCell)],
-        methods: &'a [Rc<Decl>],
-    ) {
-        let struct_name = name.name().to_string();
+    fn visit_struct(&mut self, structure: &'a Structure) {
+        let struct_name = structure.name.name().to_string();
 
-        let mut members = HashMap::new();
-        for (field_name, field_type) in fields {
-            members.insert(field_name.name().to_string(), field_type.borrow().clone());
+        let mut fields = HashMap::new();
+        for (field_name, field_type) in &structure.fields {
+            fields.insert(field_name.name().to_string(), field_type.borrow().clone());
         }
-        for decl in methods {
-            if let Decl::Function {
-                name,
-                return_type,
-                params,
-                ..
-            } = decl.as_ref()
-            {
-                members.insert(
-                    name.name().to_string(),
-                    self.make_function_type(return_type, params),
-                );
-            }
-        }
-
-        self.types.insert(
+        self.types.insert_type(
             struct_name,
-            Rc::new(TypeDef::Struct {
-                name: name.clone(),
-                members,
-            }),
+            Rc::new(TypeDef::Struct(typing::Struct {
+                name: vec![structure.name.clone()],
+                fields,
+            })),
         );
     }
 
-    fn visit_function(
-        &mut self,
-        name: &'a Identifier,
-        return_type: &'a TypeCell,
-        params: &'a [(Identifier, TypeCell)],
-        _: &[Stmt],
-        _: bool,
-        _: bool,
-    ) {
-        self.fields.insert(
-            name.name().to_string(),
-            self.make_function_type(return_type, params),
+    fn visit_function(&mut self, func: &'a Function) {
+        let mut parameters = Vec::new();
+        for (_, param_type) in &func.params {
+            parameters.push(param_type.borrow().clone());
+        }
+        self.scope.insert(
+            func.name.name().to_string(),
+            Rc::new(TypeDef::Function(typing::Function {
+                name: vec![
+                    // TODO: add full module path
+                    func.name.clone(),
+                ],
+                parameters,
+                return_type: func.return_type.borrow().clone(),
+            })),
         );
     }
 
     fn visit_const(&mut self, name: &'a Identifier, var_type: &'a TypeCell, _: &Expr) {
-        self.fields
+        self.scope
             .insert(name.name().to_string(), var_type.borrow().clone());
     }
 }

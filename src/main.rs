@@ -41,8 +41,8 @@ fn main() -> error::Result<()> {
 
 fn compile_file(filename: &Rc<PathBuf>, args: &cli::Args) -> error::Result<()> {
     if let Ok(content) = fs::read_to_string(filename.as_path()) {
-        let lexer = Lexer::new(content.chars(), filename.clone());
-        let parser = Parser::new(lexer.scan()?);
+        let lexer = Lexer::new(&content, filename.clone());
+        let parser = Parser::new(lexer);
         let ast = parser.parse()?;
         let header = Header::new().headers(&ast);
         let (types, fields) = header.analysed();
@@ -91,8 +91,8 @@ mod tests {
     #[test]
     fn infinite_scoping() -> error::Result<()> {
         let content = "{ { { { { { {} } } } } } }";
-        let lexer = Lexer::new(content.chars(), Rc::new(PathBuf::new()));
-        let mut parser = Parser::new(lexer.scan().unwrap());
-        parser.stmt().map(|_| {})
+        let lexer = Lexer::new(&content, Rc::new(PathBuf::new()));
+        let mut parser = Parser::new(lexer);
+        parser.stmt().map(|_| ())
     }
 }

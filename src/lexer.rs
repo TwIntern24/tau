@@ -3,14 +3,13 @@ use crate::{
     error::{Diagnostic, Error, Result, lexer_expected},
 };
 use std::{
-    collections::VecDeque,
     fmt::{Display, Formatter},
     fs, io,
-    iter::Peekable,
     path::PathBuf,
     rc::Rc,
-    str::Chars,
+    str::CharIndices,
 };
+use symbol_table::{GlobalSymbol, static_symbol};
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Source {
@@ -87,8 +86,9 @@ impl Token {
 impl From<Token> for Identifier {
     fn from(token: Token) -> Self {
         match token.token_type() {
-            TokenType::Identifier(name) => Identifier::new(name.to_string(), token.source),
-            TokenType::VSelf => Identifier::new("self".to_string(), token.source),
+            TokenType::Identifier(name) => Identifier::new(*name, token.source),
+            TokenType::VSelf => Identifier::new(static_symbol!("self"), token.source),
+            // TODO: Maybe replace with TryFrom?
             _ => panic!("token '{:?}' is not a identifier", token),
         }
     }
@@ -97,9 +97,10 @@ impl From<Token> for Identifier {
 impl From<&Token> for Identifier {
     fn from(token: &Token) -> Self {
         if let TokenType::Identifier(name) = token.token_type() {
-            Identifier::new(name.to_string(), token.source.clone())
+            Identifier::new(*name, token.source.clone())
         } else {
-            panic!()
+            // TODO: Maybe replace with TryFrom?
+            panic!("can only be used on an identifier")
         }
     }
 }
@@ -172,7 +173,7 @@ pub enum TokenType {
     Bool(bool),
     Number(f64),
     String(String),
-    Identifier(String),
+    Identifier(GlobalSymbol),
 
     // Misc
     Eof,
@@ -186,176 +187,155 @@ impl TokenType {
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
-    source: Peekable<Chars<'a>>,
-    tokens: VecDeque<Token>,
+    source: &'a str,
+    chars: CharIndices<'a>,
     file: Rc<PathBuf>,
     line: usize,
     start: usize,
-    offset: usize,
+    last: Option<char>,
 }
 
-impl Lexer<'_> {
-    pub fn new(source: Chars<'_>, file: Rc<PathBuf>) -> Lexer<'_> {
+impl<'a> Lexer<'a> {
+    pub fn new(source: &'a str, file: Rc<PathBuf>) -> Lexer<'a> {
         Lexer {
-            source: source.peekable(),
+            source: source,
+            chars: source.char_indices(),
             file,
-            tokens: VecDeque::new(),
             line: 1,
             start: 0,
-            offset: 0,
+            last: None,
         }
     }
 
-    pub fn scan(mut self) -> Result<VecDeque<Token>> {
-        let mut error = Vec::new();
-        while !self.is_at_end() {
-            if let Err(e) = self.scan_token() {
-                error.push(e);
-            }
-        }
-        if !error.is_empty() {
-            Err(error.into_iter().reduce(|a, b| a.concat(b)).unwrap())
-        } else {
-            Ok(self.tokens)
-        }
-    }
-
-    fn scan_token(&mut self) -> Result<()> {
-        let token_type = if let Some(c) = self.advance() {
-            match c {
-                '(' => TokenType::ParenLeft,
-                ')' => TokenType::ParenRight,
-                '{' => TokenType::BraceLeft,
-                '}' => TokenType::BraceRight,
-                '[' => TokenType::BracketLeft,
-                ']' => TokenType::BracketRight,
-                ',' => TokenType::Comma,
-                '.' => TokenType::Dot,
-                ':' => TokenType::Colon,
-                ';' => TokenType::Semicolon,
-                '+' => {
-                    if self.matchc('=') {
-                        TokenType::SetAdd
-                    } else {
-                        TokenType::Add
-                    }
-                }
-                '-' => {
-                    if self.matchc('=') {
-                        TokenType::SetSub
-                    } else if self.matchc('>') {
-                        TokenType::To
-                    } else {
-                        TokenType::Sub
-                    }
-                }
-                '*' => {
-                    if self.matchc('=') {
-                        TokenType::SetStar
-                    } else {
-                        TokenType::Star
-                    }
-                }
-                '/' => {
-                    if self.matchc('/') {
-                        let lex: &Lexer = &self.clone();
-                        while !self.is_at_end()
-                            && *self.peek().ok_or(lexer_expected("unexpected EOF", lex))? != '\n'
-                        {
-                            self.advance();
-                        }
-                        return self.scan_token();
-                    } else if self.matchc('=') {
-                        TokenType::SetDiv
-                    } else {
-                        TokenType::Div
-                    }
-                }
-                '%' => TokenType::Mod,
-                '&' => {
-                    if self.matchc('&') {
-                        TokenType::And
-                    } else {
-                        TokenType::Ref
-                    }
-                }
-                '|' => {
-                    if self.matchc('|') {
-                        TokenType::Or
-                    } else {
-                        TokenType::Vbar
-                    }
-                }
-                '=' => {
-                    if self.matchc('=') {
-                        TokenType::Eq
-                    } else {
-                        TokenType::Set
-                    }
-                }
-                '!' => {
-                    if self.matchc('=') {
-                        TokenType::Neq
-                    } else {
-                        TokenType::Not
-                    }
-                }
-                '>' => {
-                    if self.matchc('=') {
-                        TokenType::Geq
-                    } else {
-                        TokenType::Gre
-                    }
-                }
-                '<' => {
-                    if self.matchc('=') {
-                        TokenType::Leq
-                    } else {
-                        TokenType::Low
-                    }
-                }
-                ' ' | '\r' | '\t' => {
-                    self.start = self.offset;
-                    return self.scan_token();
-                }
-                '\n' => {
-                    self.line += 1;
-                    self.start = self.offset;
-                    return self.scan_token();
-                }
-                '"' => self.string()?,
-                _ => {
-                    if Lexer::is_digit(c) {
-                        self.number(c)?
-                    } else if Lexer::is_alpha(c) {
-                        self.identifier(c)?
-                    } else {
-                        Err(Error::new(vec![Diagnostic::new(
-                            format!("unexpected character '{}'", c),
-                            self.make_source(),
-                        )]))?
-                    }
+    fn scan_token(&mut self) -> Result<Token> {
+        let c = self.advance()?;
+        let token_type = match c {
+            '(' => TokenType::ParenLeft,
+            ')' => TokenType::ParenRight,
+            '{' => TokenType::BraceLeft,
+            '}' => TokenType::BraceRight,
+            '[' => TokenType::BracketLeft,
+            ']' => TokenType::BracketRight,
+            ',' => TokenType::Comma,
+            '.' => TokenType::Dot,
+            ':' => TokenType::Colon,
+            ';' => TokenType::Semicolon,
+            '+' => {
+                if self.matchc('=') {
+                    TokenType::SetAdd
+                } else {
+                    TokenType::Add
                 }
             }
-        } else {
-            TokenType::Eof
+            '-' => {
+                if self.matchc('=') {
+                    TokenType::SetSub
+                } else if self.matchc('>') {
+                    TokenType::To
+                } else {
+                    TokenType::Sub
+                }
+            }
+            '*' => {
+                if self.matchc('=') {
+                    TokenType::SetStar
+                } else {
+                    TokenType::Star
+                }
+            }
+            '/' => {
+                if self.matchc('/') {
+                    while !self.is_at_end() && self.peek()? != '\n' {
+                        self.advance()?;
+                    }
+                    return self.scan_token();
+                } else if self.matchc('=') {
+                    TokenType::SetDiv
+                } else {
+                    TokenType::Div
+                }
+            }
+            '%' => TokenType::Mod,
+            '&' => {
+                if self.matchc('&') {
+                    TokenType::And
+                } else {
+                    TokenType::Ref
+                }
+            }
+            '|' => {
+                if self.matchc('|') {
+                    TokenType::Or
+                } else {
+                    TokenType::Vbar
+                }
+            }
+            '=' => {
+                if self.matchc('=') {
+                    TokenType::Eq
+                } else {
+                    TokenType::Set
+                }
+            }
+            '!' => {
+                if self.matchc('=') {
+                    TokenType::Neq
+                } else {
+                    TokenType::Not
+                }
+            }
+            '>' => {
+                if self.matchc('=') {
+                    TokenType::Geq
+                } else {
+                    TokenType::Gre
+                }
+            }
+            '<' => {
+                if self.matchc('=') {
+                    TokenType::Leq
+                } else {
+                    TokenType::Low
+                }
+            }
+            ' ' | '\r' | '\t' => {
+                self.start = self.chars.offset();
+                return self.scan_token();
+            }
+            '\n' => {
+                self.line += 1;
+                self.start = self.chars.offset();
+                return self.scan_token();
+            }
+            '"' => self.string()?,
+            _ => {
+                if Lexer::is_digit(c) {
+                    self.number()?
+                } else if Lexer::is_alpha(c) {
+                    self.identifier()?
+                } else {
+                    Err(Error::new(vec![Diagnostic::new(
+                        format!("unexpected character '{}'", c),
+                        self.make_source(),
+                    )]))?
+                }
+            }
         };
-        self.add_token(token_type);
-        Ok(())
+        //} else {
+        //    TokenType::Eof
+        //};
+        //self.add_token(token_type);
+        Ok(Token::new(token_type, self.make_source()))
     }
 
-    fn identifier(&mut self, c: char) -> Result<TokenType> {
-        let mut text = String::from(c);
-        let lex: &Lexer = &self.clone();
-        while !self.is_at_end()
-            && Lexer::is_alpha_numeric(*self.peek().ok_or(lexer_expected("unexpected EOF", lex))?)
-        {
-            if let Some(c) = self.advance() {
-                text.push(c)
-            }
+    fn identifier(&mut self) -> Result<TokenType> {
+        self.start = self.chars.offset() - 1;
+        while !self.is_at_end() && Lexer::is_alpha_numeric(self.peek()?) {
+            self.advance()?;
         }
 
-        Ok(match text.as_str() {
+        let text = self.view();
+        Ok(match text {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
             "io" => TokenType::Io,
@@ -373,83 +353,70 @@ impl Lexer<'_> {
             "self" => TokenType::VSelf,
             "true" => TokenType::Bool(true),
             "false" => TokenType::Bool(false),
-            _ => TokenType::Identifier(text),
+            _ => TokenType::Identifier(text.into()),
         })
     }
 
-    fn number(&mut self, c: char) -> Result<TokenType> {
-        let mut text = String::from(c);
+    fn number(&mut self) -> Result<TokenType> {
+        self.start = self.chars.offset() - 1;
         let mut is_float = false;
         while !self.is_at_end() {
-            let next = if let Some(next) = self.peek() {
-                *next
-            } else {
-                Err(lexer_expected("unexpected EOF", self))?
-            };
+            let next = self.peek()?;
             if Lexer::is_digit(next) {
-                text.push(
-                    self.advance()
-                        .ok_or(lexer_expected("unexpected EOF, expected a digit", self))?,
-                )
+                self.advance()?;
             } else if next == '.' {
                 if is_float {
                     return Err(lexer_expected("found a second dot in the float", self));
                 }
                 is_float = true;
-                text.push(
-                    self.advance()
-                        .ok_or(lexer_expected("found EOF, expected a dot ('.')", self))?,
-                );
+                self.advance()?;
             } else {
                 break;
             }
         }
 
-        Ok(TokenType::Number(text.parse().unwrap()))
+        Ok(TokenType::Number(dbg!(self.view()).parse().unwrap()))
     }
 
     fn string(&mut self) -> crate::error::Result<TokenType> {
-        let mut text = String::new();
-        // FIX:
-        while *self
-            .peek()
-                .unwrap()
-            // .ok_or(lexer_expected("got EOF in unterminated String", self))?
-            != '"'
-        {
-            if let Some(c) = self.advance() {
-                if c == '\n' {
-                    self.line += 1;
-                }
-                text.push(c);
+        self.start = self.chars.offset();
+        while !self.is_at_end() && self.peek()? != '"' {
+            let c = self.advance()?;
+            if c == '\n' {
+                self.line += 1;
             }
         }
 
+        let view = self.view().to_string();
         // The enclosing ".
-        self.advance();
+        self.advance()?;
 
-        Ok(TokenType::String(text))
+        Ok(TokenType::String(dbg!(view)))
     }
 
     fn matchc(&mut self, c: char) -> bool {
         match self.peek() {
-            Some(p) => {
-                if p != &c {
+            Ok(p) => {
+                if p != c || self.advance().is_err() {
                     return false;
                 }
-                self.advance();
                 true
             }
             _ => false,
         }
     }
 
-    fn peek(&mut self) -> Option<&char> {
-        self.source.peek()
+    fn peek(&mut self) -> Result<char> {
+        if let Some(c) = self.last {
+            return Ok(c);
+        }
+        let c = self.advance()?;
+        self.last = Some(c);
+        Ok(c)
     }
 
     fn is_alpha(c: char) -> bool {
-        c.is_alphabetic() || c == '_'
+        c.is_ascii_alphabetic() || c == '_'
     }
 
     fn is_digit(c: char) -> bool {
@@ -460,22 +427,43 @@ impl Lexer<'_> {
         Lexer::is_alpha(c) || Lexer::is_digit(c)
     }
 
-    fn is_at_end(&mut self) -> bool {
-        self.peek().is_none()
+    fn is_at_end(&self) -> bool {
+        self.source.len() <= self.chars.offset()
     }
 
-    fn advance(&mut self) -> Option<char> {
-        self.offset += 1;
-        self.source.next()
+    fn advance(&mut self) -> Result<char> {
+        if let Some(c) = self.last.take() {
+            return Ok(c);
+        }
+        self.chars
+            .next()
+            .map(|v| v.1)
+            .ok_or_else(|| lexer_expected("unexpected eof", self))
+    }
+
+    fn view(&self) -> &str {
+        &self.source[self.start..self.chars.offset() - 1]
     }
 
     /// Public because it is used for error
     pub(crate) fn make_source(&self) -> Source {
-        Source::new(self.file.clone(), self.line, self.start, self.offset)
+        Source::new(
+            self.file.clone(),
+            self.line,
+            self.start,
+            self.chars.offset(),
+        )
     }
+}
 
-    fn add_token(&mut self, token_type: TokenType) {
-        self.tokens
-            .push_back(Token::new(token_type, self.make_source()))
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Result<Token>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.is_at_end() {
+            None
+        } else {
+            Some(self.scan_token())
+        }
     }
 }

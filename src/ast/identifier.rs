@@ -8,7 +8,7 @@ pub struct Identifier {
     /// Multiple symbols refer to the same string, which allows us to remove
     /// useless clone calls without introducing live times.
     ///
-    /// https://docs.rs/symbol_table/latest/symbol_table/struct.GlobalSymbol.html
+    /// <https://docs.rs/symbol_table/latest/symbol_table/struct.GlobalSymbol.html>
     name: GlobalSymbol,
     source: Source,
 }

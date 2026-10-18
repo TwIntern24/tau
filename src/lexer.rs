@@ -180,7 +180,7 @@ pub enum TokenType {
 }
 
 impl TokenType {
-    pub fn is_identifer(&self) -> bool {
+    pub fn is_identifier(&self) -> bool {
         matches!(self, Self::Identifier(_))
     }
 }
@@ -314,17 +314,13 @@ impl<'a> Lexer<'a> {
                 } else if Lexer::is_alpha(c) {
                     self.identifier()?
                 } else {
-                    Err(Error::new(vec![Diagnostic::new(
+                    return Err(Error::new(vec![Diagnostic::new(
                         format!("unexpected character '{}'", c),
                         self.make_source(),
-                    )]))?
+                    )]));
                 }
             }
         };
-        //} else {
-        //    TokenType::Eof
-        //};
-        //self.add_token(token_type);
         Ok(Token::new(token_type, self.make_source()))
     }
 
@@ -375,9 +371,10 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Ok(TokenType::Number(dbg!(self.view()).parse().unwrap()))
+        Ok(TokenType::Number(self.view().parse().unwrap()))
     }
 
+    /// Parses a single string.
     fn string(&mut self) -> crate::error::Result<TokenType> {
         self.start = self.chars.offset();
         while !self.is_at_end() && self.peek()? != '"' {
@@ -391,17 +388,12 @@ impl<'a> Lexer<'a> {
         // The enclosing ".
         self.advance()?;
 
-        Ok(TokenType::String(dbg!(view)))
+        Ok(TokenType::String(view))
     }
 
     fn matchc(&mut self, c: char) -> bool {
         match self.peek() {
-            Ok(p) => {
-                if p != c || self.advance().is_err() {
-                    return false;
-                }
-                true
-            }
+            Ok(p) => p == c && self.advance().is_ok(),
             _ => false,
         }
     }

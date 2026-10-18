@@ -15,8 +15,15 @@ use symbol_table::static_symbol;
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 pub struct Parser<I: Iterator<Item = Result<Token>>> {
+    /// The token iterator. This is generelly the Lexer, but by making it
+    /// generic, we allow any type of token iterator.
     tokens: I,
+    /// All declaration's that we parsed are added to this collection.
     declarations: Vec<Decl>,
+    /// The last token that the parser read. This is used for the peek() method.
+    /// Why do we implement peek() ourself and don't use Peekable instead? The
+    /// issue with Peekable is, that it does not propagate the errors, which is
+    /// essential for the parser.
     last: Option<Token>,
 }
 
@@ -109,7 +116,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
     fn decl_function(&mut self, modifiers: Modifiers) -> Result<Decl> {
         let name = self.advance()?;
-        if !name.token_type().is_identifer() {
+        if !name.token_type().is_identifier() {
             return Err(parser_expected("expected an function identifier", name));
         }
 
@@ -188,13 +195,13 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
     fn decl_struct(&mut self) -> Result<Decl> {
         let name = self.advance()?;
-        if !name.token_type().is_identifer() {
+        if !name.token_type().is_identifier() {
             return Err(parser_expected("expected a struct identifier", name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
         let mut fields = HashMap::new();
-        while self.peek()?.token_type().is_identifer() {
+        while self.peek()?.token_type().is_identifier() {
             let (field_name, field_type) = self.decl_type_def()?;
             fields.insert(field_name, field_type);
             if *self.peek()?.token_type() == TokenType::Comma {
@@ -211,7 +218,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
         let name = self.advance()?;
-        if !name.token_type().is_identifer() {
+        if !name.token_type().is_identifier() {
             return Err(parser_expected("expected a type identifier", name));
         }
         self.consume(&TokenType::Colon)?;
@@ -327,7 +334,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         } else {
             (self.advance()?, self.advance()?)
         };
-        if !name.token_type().is_identifer() {
+        if !name.token_type().is_identifier() {
             return Err(parser_expected("expected a variable identifier", name));
         }
         let var_type = if *self.peek()?.token_type() != TokenType::Set {
@@ -464,7 +471,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let next = self.advance()?;
         if *next.token_type() == TokenType::Dot {
             let rhs = self.advance()?;
-            if !rhs.token_type().is_identifer() {
+            if !rhs.token_type().is_identifier() {
                 return Err(parser_expected("expected an identidier on the RHS", rhs));
             }
             Ok(Expr::new(
@@ -578,7 +585,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let mut fields = Vec::new();
         while *self.peek()?.token_type() != TokenType::BraceRight {
             let name = self.advance()?;
-            if !name.token_type().is_identifer() {
+            if !name.token_type().is_identifier() {
                 return Err(parser_expected(
                     "expected field name identifier for the struct",
                     name,
@@ -703,6 +710,8 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
+    /// Checks if the next token has the expected token type. If not, throws an
+    /// error. Otherwise it consumes and returns the next token.
     fn consume(&mut self, expected: &TokenType) -> Result<Token> {
         let next = self.advance()?;
         if next.token_type() != expected {
@@ -719,18 +728,19 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         Ok(next)
     }
 
+    /// Returns and consumes the next token. Throws an error if no next
+    /// token exists or if the underlying token iterator had an error.
     fn advance(&mut self) -> Result<Token> {
         if let Some(c) = self.last.take() {
             return Ok(c);
         }
         // TODO: add better error handling, this was already covered in another pull
         // request
-        self.tokens.next().ok_or_else(|| {
-            dbg!(self.declarations.len());
-            Error::new(vec![])
-        })?
+        self.tokens.next().ok_or_else(|| Error::new(vec![]))?
     }
 
+    /// Returns but does not consume the next token. Throws an error if no next
+    /// token exists or if the underlying token iterator had an error.
     fn peek(&mut self) -> Result<&Token> {
         if let Some(ref c) = self.last {
             return Ok(c);
@@ -740,6 +750,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.peek()
     }
 
+    /// Returns true if any tokens are left, otherwise false.
     fn has_next(&mut self) -> bool {
         self.peek().is_ok()
     }

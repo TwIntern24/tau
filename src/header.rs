@@ -1,15 +1,16 @@
-use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
-
 use crate::{
     ast::{
         declaration::{Decl, DeclVisitor, Function, Structure},
         expression::Expr,
         identifier::Identifier,
     },
-    lexer::Lexer,
-    parser::Parser,
+    error::{FileDb, Result},
+    process_file,
     typing::{self, TypeCell, TypeDef, TypeNames, TypeTree},
 };
+use codespan_reporting::term;
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use std::{collections::HashMap, fs, path::PathBuf, rc::Rc};
 
 pub struct Header {
     types: TypeTree,
@@ -24,11 +25,11 @@ impl Header {
         }
     }
 
-    pub fn headers(mut self, declarations: &[Decl]) -> Header {
+    pub fn headers(mut self, declarations: &[Decl]) -> Result<Header> {
         for declaration in declarations {
-            self.visit_decl(declaration);
+            self.visit_decl(declaration)?;
         }
-        self
+        Ok(self)
     }
 
     pub fn analysed(self) -> (TypeTree, TypeNames) {
@@ -37,9 +38,9 @@ impl Header {
 }
 
 impl<'a> DeclVisitor<'a> for Header {
-    type Output = ();
+    type Output = Result<()>;
 
-    fn visit_import(&mut self, path: &[Identifier]) {
+    fn visit_import(&mut self, path: &[Identifier]) -> Self::Output {
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
@@ -49,19 +50,31 @@ impl<'a> DeclVisitor<'a> for Header {
             filename
         };
         let content = fs::read_to_string(&filename).expect("Expected to open file");
-        let lexer = Lexer::new(content.chars(), Rc::new(filename));
-        let parser = Parser::new(lexer.scan().unwrap());
+        let mut files = FileDb::new();
+        let display = filename.display();
+        let file_id = files.add(&display, &content);
+        match process_file(file_id, &content) {
+            Ok((_, types, scope)) => {
+                self.types.insert_tree(
+                    path.last().expect("import path not empty").to_string(),
+                    types,
+                );
+                self.scope.extend(scope);
+            }
+            Err(error) => {
+                for diagnostic in error.diagnostics() {
+                    let writer = StandardStream::stderr(ColorChoice::Always);
+                    let config = codespan_reporting::term::Config::default();
 
-        let ast = parser.parse().unwrap();
-        let header = Header::new().headers(&ast);
-        let (types, scope) = header.analysed();
-        // TODO: error handling
-        self.types
-            .insert_tree(path.last().unwrap().to_string(), types);
-        self.scope.extend(scope);
+                    let _ =
+                        term::emit_to_io_write(&mut writer.lock(), &config, &files, &diagnostic);
+                }
+            }
+        }
+        Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a Structure) {
+    fn visit_struct(&mut self, structure: &'a Structure) -> Self::Output {
         let struct_name = structure.name.name().to_string();
 
         let mut fields = HashMap::new();
@@ -75,9 +88,10 @@ impl<'a> DeclVisitor<'a> for Header {
                 fields,
             })),
         );
+        Ok(())
     }
 
-    fn visit_function(&mut self, func: &'a Function) {
+    fn visit_function(&mut self, func: &'a Function) -> Self::Output {
         let mut parameters = Vec::new();
         for (_, param_type) in &func.params {
             parameters.push(param_type.borrow().clone());
@@ -93,10 +107,17 @@ impl<'a> DeclVisitor<'a> for Header {
                 return_type: func.return_type.borrow().clone(),
             })),
         );
+        Ok(())
     }
 
-    fn visit_const(&mut self, name: &'a Identifier, var_type: &'a TypeCell, _: &Expr) {
+    fn visit_const(
+        &mut self,
+        name: &'a Identifier,
+        var_type: &'a TypeCell,
+        _: &Expr,
+    ) -> Self::Output {
         self.scope
             .insert(name.name().to_string(), var_type.borrow().clone());
+        Ok(())
     }
 }

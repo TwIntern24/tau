@@ -1,13 +1,13 @@
+use crate::{
+    ast::identifier::Identifier,
+    error::{Result, diagnostic, error},
+    lexer::Source,
+};
 use std::{
     cell::RefCell,
     collections::HashMap,
-    fmt::{Display, Formatter, Result},
+    fmt::{self, Display, Formatter},
     rc::Rc,
-};
-
-use crate::{
-    ast::identifier::Identifier,
-    error::{self, Diagnostic, Error},
 };
 
 #[derive(Debug, PartialEq)]
@@ -123,7 +123,7 @@ impl TypeDef {
 }
 
 impl Display for TypeDef {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Struct(structure) => {
                 formatter.write_str(structure.name[0].name())?;
@@ -257,7 +257,7 @@ impl TypeTree {
             .clone()
     }
 
-    pub fn lookup_type(&self, type_def: &Rc<TypeDef>) -> error::Result<Rc<TypeDef>> {
+    pub fn lookup_type(&self, type_def: &Rc<TypeDef>) -> Result<Rc<TypeDef>> {
         match type_def.as_ref() {
             TypeDef::Path(path) => self.lookup_path(path),
             TypeDef::RawPointer(ptr) => {
@@ -271,23 +271,20 @@ impl TypeTree {
         }
     }
 
-    pub fn lookup_path(&self, path: &TypePath) -> error::Result<Rc<TypeDef>> {
+    pub fn lookup_path(&self, path: &TypePath) -> Result<Rc<TypeDef>> {
         let mut tree = self;
-        for identidier in path {
-            if let Some(child) = tree.childs.get(identidier.name()) {
+        for identifier in path {
+            if let Some(child) = tree.childs.get(identifier.name()) {
                 tree = child;
             } else {
-                return Err(Error::new(vec![Diagnostic::new(
-                    "could not find path".to_string(),
-                    identidier.source(),
-                )]));
+                return error(diagnostic("unknown type", identifier.source()));
             }
         }
         if let Some(value) = &tree.value {
             Ok(value.clone())
         } else {
             // TODO: add diagnostics that the type could not be found.
-            Err(Error::new(vec![]))
+            return crate::error::error(diagnostic("unknown type", &Source::try_from(path)?));
         }
     }
 

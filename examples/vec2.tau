@@ -24,8 +24,8 @@ fn length(v: Vec2) -> f64 =
 fn norm(v: Vec2) -> Vec2 =
     let len = length(v);
     in
-        if (len == 0) ZERO
-        else vec2(v.x / len, v.y / len)
+        if (len == 0) { ZERO }
+        else { vec2(v.x / len, v.y / len) }
 
 io fn main() {
     let _ = add(vec2(3, 4), vec2(4, -2));

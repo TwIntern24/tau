@@ -87,8 +87,8 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
 }
 
 fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl>, TypeTree, TypeNames)> {
-    let lexer = Lexer::new(content.chars(), file_id);
-    let parser = Parser::new(lexer.scan()?);
+    let lexer = Lexer::new(&content, file_id);
+    let parser = Parser::new(lexer);
     let ast = parser.parse()?;
     let header = Header::new().headers(&ast)?;
     let (types, fields) = header.analysed();
@@ -122,8 +122,8 @@ mod tests {
     #[test]
     fn infinite_scoping() -> Result<()> {
         let content = "{ { { { { { {} } } } } } }";
-        let lexer = Lexer::new(content.chars(), 0);
-        let mut parser = Parser::new(lexer.scan().unwrap());
+        let lexer = Lexer::new(content, 0);
+        let mut parser = Parser::new(lexer);
         parser.stmt().map(|_| {})
     }
 }

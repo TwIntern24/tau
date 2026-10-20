@@ -11,6 +11,7 @@ rust-version = "1.85"
 
 [dependencies]
 codespan-reporting = "0.13.1"
+symbol_table = { version = "0.5.0", features = ["global"] }
 
 [profile.release]
 debug = "line-tables-only"

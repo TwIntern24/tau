@@ -638,7 +638,7 @@ mod tests {
         .into_iter()
         .map(|name| {
             Identifier::from(Token::new(
-                TokenType::Identifier(name.to_string()),
+                TokenType::Identifier(name.into()),
                 Source::new(0, 0..0),
             ))
         });

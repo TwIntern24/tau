@@ -5,41 +5,47 @@ use crate::{
         identifier::Identifier,
         statement::{Stmt, StmtType},
     },
-    error::{Result, diagnostic, error},
+    error::{Error, Result, diagnostic, error},
     lexer::{Source, Token, TokenType},
     typing::{self, TypeDef},
 };
-use std::{
-    cell::RefCell,
-    collections::{HashMap, VecDeque},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, iter::Iterator, rc::Rc};
+use symbol_table::static_symbol;
 
 // Pratt parser inspired after the following block post:
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-pub struct Parser {
-    tokens: VecDeque<Token>,
+pub struct Parser<I: Iterator<Item = Result<Token>>> {
+    /// The token iterator. This is generelly the Lexer, but by making it
+    /// generic, we allow any type of token iterator.
+    tokens: I,
+    /// All declaration's that we parsed are added to this collection.
     declarations: Vec<Decl>,
+    /// The last token that the parser read. This is used for the peek() method.
+    /// Why do we implement peek() ourself and don't use Peekable instead? The
+    /// issue with Peekable is, that it does not propagate the errors, which is
+    /// essential for the parser.
+    last: Option<Token>,
 }
 
-impl Parser {
-    pub fn new(tokens: VecDeque<Token>) -> Parser {
+impl<I: Iterator<Item = Result<Token>>> Parser<I> {
+    pub fn new(tokens: I) -> Parser<I> {
         Parser {
-            tokens,
+            tokens: tokens,
             declarations: Vec::new(),
+            last: None,
         }
     }
 
     pub fn parse(mut self) -> Result<Vec<Decl>> {
         while self.has_next() {
-            let declaration = self.decl();
-            self.declarations.push(declaration?);
+            let declaration = self.decl()?;
+            self.declarations.push(declaration);
         }
         Ok(self.declarations)
     }
 
     pub(crate) fn decl(&mut self) -> Result<Decl> {
-        let token = self.advance();
+        let token = self.advance()?;
         if token.token_type() == &TokenType::Eof {
             return error(diagnostic("Found end of File but expected a token", &token));
         }
@@ -75,7 +81,7 @@ impl Parser {
     }
 
     fn decl_modifier(&mut self, modifiers: Modifiers) -> Result<Decl> {
-        let token = self.advance();
+        let token = self.advance()?;
         match token.token_type() {
             TokenType::Extern => {
                 if modifiers.is_extern {
@@ -106,27 +112,27 @@ impl Parser {
     }
 
     fn decl_function(&mut self, modifiers: Modifiers) -> Result<Decl> {
-        let name = self.advance();
-        if !name.token_type().is_identifer() {
+        let name = self.advance()?;
+        if !name.token_type().is_identifier() {
             return error(diagnostic("expected an function identifier", &name));
         }
 
         self.consume(&TokenType::ParenLeft)?;
         let mut params = Vec::new();
-        while *self.peek().token_type() != TokenType::ParenRight {
+        while *self.peek()?.token_type() != TokenType::ParenRight {
             params.push(self.decl_type_def()?);
-            if *self.peek().token_type() != TokenType::ParenRight {
+            if *self.peek()?.token_type() != TokenType::ParenRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
         let end = self.consume(&TokenType::ParenRight)?;
 
-        let return_type = if *self.peek().token_type() == TokenType::To {
+        let return_type = if *self.peek()?.token_type() == TokenType::To {
             self.consume(&TokenType::To)?;
             self.decl_type()?
         } else {
             Rc::new(TypeDef::Path(vec![Identifier::new(
-                "void".to_string(),
+                static_symbol!("void"),
                 // TODO: replace source with None, as we can not find any source for an implicit
                 // token. Maybe make source optional?
                 end.into(),
@@ -150,17 +156,17 @@ impl Parser {
 
     fn decl_body(&mut self) -> Result<Vec<Stmt>> {
         let mut body = Vec::new();
-        if self.peek().token_type() == &TokenType::BraceLeft {
+        if self.peek()?.token_type() == &TokenType::BraceLeft {
             self.consume(&TokenType::BraceLeft)?;
-            while *self.peek().token_type() != TokenType::BraceRight {
+            while *self.peek()?.token_type() != TokenType::BraceRight {
                 body.push(self.stmt()?);
             }
             self.consume(&TokenType::BraceRight)?;
         } else {
             self.consume(&TokenType::Set)?;
-            if *self.peek().token_type() == TokenType::Let {
-                self.advance();
-                while *self.peek().token_type() != TokenType::In {
+            if *self.peek()?.token_type() == TokenType::Let {
+                self.advance()?;
+                while *self.peek()?.token_type() != TokenType::In {
                     body.push(self.stmt_let(true)?);
                 }
                 self.consume(&TokenType::In)?;
@@ -177,9 +183,9 @@ impl Parser {
     fn decl_import(&mut self) -> Result<Decl> {
         let mut path = Vec::new();
         loop {
-            path.push(Identifier::from(self.advance()));
-            if *self.peek().token_type() == TokenType::Dot {
-                self.advance();
+            path.push(Identifier::from(self.advance()?));
+            if *self.peek()?.token_type() == TokenType::Dot {
+                self.advance()?;
             } else {
                 break;
             }
@@ -188,17 +194,17 @@ impl Parser {
     }
 
     fn decl_struct(&mut self) -> Result<Decl> {
-        let name = self.advance();
-        if !name.token_type().is_identifer() {
+        let name = self.advance()?;
+        if !name.token_type().is_identifier() {
             return error(diagnostic("expected a struct identifier", &name));
         };
         self.consume(&TokenType::BraceLeft)?;
 
         let mut fields = HashMap::new();
-        while self.peek().token_type().is_identifer() {
+        while self.peek()?.token_type().is_identifier() {
             let (field_name, field_type) = self.decl_type_def()?;
             fields.insert(field_name, field_type);
-            if *self.peek().token_type() == TokenType::Comma {
+            if *self.peek()?.token_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma)?;
             }
         }
@@ -211,8 +217,8 @@ impl Parser {
     }
 
     fn decl_type_def(&mut self) -> Result<(Identifier, RefCell<Rc<TypeDef>>)> {
-        let name = self.advance();
-        if !name.token_type().is_identifer() {
+        let name = self.advance()?;
+        if !name.token_type().is_identifier() {
             return error(diagnostic("expected a type identifier", &name));
         }
         self.consume(&TokenType::Colon)?;
@@ -221,7 +227,7 @@ impl Parser {
     }
 
     fn decl_type(&mut self) -> Result<Rc<TypeDef>> {
-        let next = self.advance();
+        let next = self.advance()?;
         match next.token_type() {
             TokenType::Star => Ok(Rc::new(TypeDef::RawPointer(self.decl_type()?))),
             TokenType::BracketLeft => {
@@ -231,16 +237,16 @@ impl Parser {
             }
             TokenType::Identifier(_) => {
                 let mut path = vec![next.into()];
-                while *self.peek().token_type() == TokenType::Dot {
+                while *self.peek()?.token_type() == TokenType::Dot {
                     self.consume(&TokenType::Dot)?;
-                    let id = self.advance().into();
+                    let id = self.advance()?.into();
                     path.push(id);
                 }
                 Ok(Rc::new(TypeDef::Path(path)))
             }
             TokenType::ParenLeft => {
                 let mut parameters = vec![self.decl_type()?];
-                while *self.peek().token_type() == TokenType::Comma {
+                while *self.peek()?.token_type() == TokenType::Comma {
                     self.consume(&TokenType::Comma)?;
                     let param = self.decl_type()?;
                     parameters.push(param);
@@ -260,12 +266,12 @@ impl Parser {
     }
 
     pub(crate) fn stmt(&mut self) -> Result<Stmt> {
-        let peek = self.peek();
+        let peek = self.peek()?;
         match peek.token_type() {
             TokenType::BraceLeft => self.stmt_block(),
             TokenType::Let => self.stmt_let(false),
             TokenType::Return => {
-                let current = self.advance();
+                let current = self.advance()?;
                 let expr = self.expr()?;
                 self.consume(&TokenType::Semicolon)?;
                 Ok(Stmt::new(
@@ -274,15 +280,15 @@ impl Parser {
                 ))
             }
             TokenType::Break => {
-                let current = self.advance();
-                Ok(Stmt::new(current.into(), StmtType::Break))
+                let current = self.advance()?;
+                Ok(Stmt::new(current.source().clone(), StmtType::Break))
             }
             TokenType::For => self.stmt_for(),
             TokenType::While => self.stmt_while(),
             _ => {
                 let expr = self.expr()?;
-                if *self.peek().token_type() == TokenType::Semicolon {
-                    self.advance();
+                if *self.peek()?.token_type() == TokenType::Semicolon {
+                    self.advance()?;
                 }
                 Ok(Stmt::new(expr.source().clone(), StmtType::ExprStmt(expr)))
             }
@@ -290,9 +296,9 @@ impl Parser {
     }
 
     fn stmt_block(&mut self) -> Result<Stmt> {
-        let current = self.advance();
+        let current = self.advance()?;
         let mut statements = Vec::new();
-        while *self.peek().token_type() != TokenType::BraceRight {
+        while *self.peek()?.token_type() != TokenType::BraceRight {
             statements.push(Rc::new(self.stmt()?));
         }
         let rhs = self.consume(&TokenType::BraceRight)?;
@@ -323,15 +329,15 @@ impl Parser {
     /// skipped by setting the skip let arg to true.
     fn stmt_let(&mut self, skip_let: bool) -> Result<Stmt> {
         let (start, name) = if skip_let {
-            let next = self.advance();
+            let next = self.advance()?;
             (next.clone(), next)
         } else {
-            (self.advance(), self.advance())
+            (self.advance()?, self.advance()?)
         };
-        if !name.token_type().is_identifer() {
+        if !name.token_type().is_identifier() {
             return error(diagnostic("expected a variable identifier", name.source()));
         }
-        let var_type = if *self.peek().token_type() != TokenType::Set {
+        let var_type = if *self.peek()?.token_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
             self.decl_type()?
         } else {
@@ -351,43 +357,36 @@ impl Parser {
     }
 
     fn stmt_for(&mut self) -> Result<Stmt> {
-        let current = self.advance();
+        let current = self.advance()?;
         let initializer = Rc::new(self.stmt()?);
         self.consume(&TokenType::Semicolon)?;
         let condition = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
         let body = Rc::new(self.stmt_block()?);
-        Ok(Stmt::new(
-            Source::union(&current.source(), &body.source()),
+        let source = Source::union(&current.source(), &body.source());
+        let increment = Rc::new(Stmt::new(
+            increment.source().clone(),
+            StmtType::ExprStmt(increment),
+        ));
+        let body = Rc::new(Stmt::new(
+            body.source().clone(),
             StmtType::Block {
-                statements: vec![
-                    initializer,
-                    Rc::new(Stmt::new(
-                        Source::union(&condition.source(), &body.source()),
-                        StmtType::While {
-                            condition,
-                            body: Rc::new(Stmt::new(
-                                body.source().clone(),
-                                StmtType::Block {
-                                    statements: vec![
-                                        body,
-                                        Rc::new(Stmt::new(
-                                            increment.source().clone(),
-                                            StmtType::ExprStmt(increment),
-                                        )),
-                                    ],
-                                },
-                            )),
-                        },
-                    )),
-                ],
+                statements: vec![body, increment],
             },
-        ))
+        ));
+        let statements = vec![
+            initializer,
+            Rc::new(Stmt::new(
+                source.clone(),
+                StmtType::While { condition, body },
+            )),
+        ];
+        Ok(Stmt::new(source, StmtType::Block { statements }))
     }
 
     fn stmt_while(&mut self) -> Result<Stmt> {
-        let current = self.advance();
+        let current = self.advance()?;
         let condition = self.expr()?;
         let body = Rc::new(self.stmt_block()?);
         Ok(Stmt::new(
@@ -401,17 +400,17 @@ impl Parser {
     }
 
     fn expr_bp(&mut self, min_bp: u8) -> Result<Expr> {
-        let next = self.advance();
+        let next = self.advance()?;
         let mut lhs = self.expr_lhs(next)?;
         while self.has_next() {
-            let op = self.peek().token_type();
-            if let Some(l_bp) = Parser::postfix_binding_power(op) {
+            let op = self.peek()?.token_type();
+            if let Some(l_bp) = Parser::<I>::postfix_binding_power(op) {
                 // If current binding power is below minimum, we return the left hand side
                 // expression
                 if l_bp < min_bp {
                     break;
                 }
-                let next = self.advance();
+                let next = self.advance()?;
                 match next.token_type() {
                     TokenType::BracketLeft => {
                         lhs = self.expr_index(lhs)?;
@@ -421,7 +420,7 @@ impl Parser {
                     }
                     unexpected => unreachable!("Unexpected operator: {:?}", unexpected),
                 }
-            } else if let Some((l_bp, r_bp)) = Parser::infix_binding_power(op) {
+            } else if let Some((l_bp, r_bp)) = Parser::<I>::infix_binding_power(op) {
                 // If current binding power is below minimum, we return the left hand side
                 // expression
                 if l_bp < min_bp {
@@ -460,7 +459,7 @@ impl Parser {
     }
 
     fn expr_unary(&mut self, op: Token) -> Result<Expr> {
-        let r_bp = Parser::prefix_binding_power(op.token_type());
+        let r_bp = Parser::<I>::prefix_binding_power(op.token_type());
         let rhs = self.expr_bp(r_bp)?;
         Ok(Expr::new(
             Source::union(&op.source(), &rhs.source()),
@@ -472,10 +471,10 @@ impl Parser {
     }
 
     fn expr_binary(&mut self, lhs: Expr, bp: u8) -> Result<Expr> {
-        let next = self.advance();
+        let next = self.advance()?;
         if *next.token_type() == TokenType::Dot {
-            let rhs = self.advance();
-            if !rhs.token_type().is_identifer() {
+            let rhs = self.advance()?;
+            if !rhs.token_type().is_identifier() {
                 return error(diagnostic(
                     "expected an identidier on the RHS",
                     rhs.source(),
@@ -504,9 +503,9 @@ impl Parser {
 
     fn expr_call(&mut self, lhs: Expr) -> Result<Expr> {
         let mut arguments = Vec::new();
-        while *self.peek().token_type() != TokenType::ParenRight {
+        while *self.peek()?.token_type() != TokenType::ParenRight {
             arguments.push(Rc::new(self.expr()?));
-            if *self.peek().token_type() == TokenType::Comma {
+            if *self.peek()?.token_type() == TokenType::Comma {
                 self.consume(&TokenType::Comma)?;
             }
         }
@@ -521,16 +520,16 @@ impl Parser {
     }
 
     fn expr_create_or_index(&mut self, next: Token) -> Result<Expr> {
-        self.advance();
-        if *self.peek().token_type() == TokenType::BracketRight {
+        self.advance()?;
+        if *self.peek()?.token_type() == TokenType::BracketRight {
             // No index was given, only a array creation is possible
-            self.advance();
+            self.advance()?;
             self.expr_create_array(next, None)
         } else {
             // A index was given, can be a sized array or array index
             let expr = Rc::new(self.expr()?);
             let current = self.consume(&TokenType::BracketRight)?;
-            if *self.peek().token_type() == TokenType::BraceLeft {
+            if *self.peek()?.token_type() == TokenType::BraceLeft {
                 self.expr_create_array(next, Some(expr))
             } else {
                 let kind = ExprKind::Index {
@@ -556,9 +555,9 @@ impl Parser {
     ) -> Result<Expr> {
         self.consume(&TokenType::BraceLeft)?;
         let mut fields = Vec::new();
-        while *self.peek().token_type() != TokenType::BraceRight {
+        while *self.peek()?.token_type() != TokenType::BraceRight {
             fields.push(Rc::new(self.expr()?));
-            if *self.peek().token_type() != TokenType::BraceRight {
+            if *self.peek()?.token_type() != TokenType::BraceRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
@@ -590,9 +589,9 @@ impl Parser {
     fn expr_create_struct(&mut self, struct_name: Token) -> Result<Expr> {
         let current = self.consume(&TokenType::BraceLeft)?;
         let mut fields = Vec::new();
-        while *self.peek().token_type() != TokenType::BraceRight {
-            let name = self.advance();
-            if !name.token_type().is_identifer() {
+        while *self.peek()?.token_type() != TokenType::BraceRight {
+            let name = self.advance()?;
+            if !name.token_type().is_identifier() {
                 return error(diagnostic(
                     "expected field name identifier for the struct",
                     name.source(),
@@ -602,7 +601,7 @@ impl Parser {
             let expr = Rc::new(self.expr()?);
             let field = (Identifier::from(name), expr);
             fields.push(field);
-            if *self.peek().token_type() != TokenType::BraceRight {
+            if *self.peek()?.token_type() != TokenType::BraceRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
@@ -628,7 +627,7 @@ impl Parser {
     }
 
     fn expr_identifier(&mut self, next: Token) -> Result<Expr> {
-        match *self.peek().token_type() {
+        match *self.peek()?.token_type() {
             TokenType::BraceLeft => self.expr_create_struct(next),
             TokenType::BracketLeft => self.expr_create_or_index(next),
             _ => Ok(Expr::new(
@@ -646,7 +645,7 @@ impl Parser {
         self.consume(&TokenType::BraceLeft)?;
         let if_branch = Rc::new(self.stmt()?);
         let brace = self.consume(&TokenType::BraceRight)?;
-        let (else_branch, source) = if *self.peek().token_type() == TokenType::Else {
+        let (else_branch, source) = if *self.peek()?.token_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
             self.consume(&TokenType::BraceLeft)?;
             let else_branch = self.stmt()?;
@@ -721,8 +720,10 @@ impl Parser {
         }
     }
 
+    /// Checks if the next token has the expected token type. If not, throws an
+    /// error. Otherwise it consumes and returns the next token.
     fn consume(&mut self, expected: &TokenType) -> Result<Token> {
-        let next = self.advance();
+        let next = self.advance()?;
         if next.token_type() != expected {
             // The consumed token was not of the expected type
             return error(diagnostic(
@@ -737,15 +738,30 @@ impl Parser {
         Ok(next)
     }
 
-    fn advance(&mut self) -> Token {
-        self.tokens.pop_front().expect("Expected next token")
+    /// Returns and consumes the next token. Throws an error if no next
+    /// token exists or if the underlying token iterator had an error.
+    fn advance(&mut self) -> Result<Token> {
+        if let Some(c) = self.last.take() {
+            return Ok(c);
+        }
+        // TODO: add better error handling, this was already covered in another pull
+        // request
+        self.tokens.next().ok_or_else(|| Error::new(vec![]))?
     }
 
-    fn peek(&self) -> &Token {
-        self.tokens.front().expect("Expected next token")
+    /// Returns but does not consume the next token. Throws an error if no next
+    /// token exists or if the underlying token iterator had an error.
+    fn peek(&mut self) -> Result<&Token> {
+        if let Some(ref c) = self.last {
+            return Ok(c);
+        }
+        let c = self.advance()?;
+        self.last = Some(c);
+        self.peek()
     }
 
-    fn has_next(&self) -> bool {
-        self.tokens.len() > 1
+    /// Returns true if any tokens are left, otherwise false.
+    fn has_next(&mut self) -> bool {
+        self.peek().is_ok()
     }
 }

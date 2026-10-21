@@ -10,7 +10,7 @@ use tau_core::{
     generator::{Compiler, set_output},
     process_file,
 };
-use tau_generator_c::{CppCodeGenerator, CppHeaderGenerator};
+use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
 
 mod cli;
 
@@ -42,15 +42,15 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
         let file_id = files.add(&display, &content);
         match process_file(file_id, &content) {
             Ok((ast, _, _)) => match args.target() {
-                cli::Target::Cpp => {
+                cli::Target::C => {
                     let compiler = Compiler::new(&ast);
                     let header_output = set_output(filename.as_ref(), args.output(), "hpp");
                     compiler
-                        .compile(CppHeaderGenerator, &header_output)
+                        .compile(CHeaderGenerator, &header_output)
                         .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
-                    let code_output = set_output(filename.as_ref(), args.output(), "cpp");
+                    let code_output = set_output(filename.as_ref(), args.output(), "C");
                     compiler
-                        .compile(CppCodeGenerator::new(), &code_output)
+                        .compile(CCodeGenerator::new(), &code_output)
                         .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)
                 }
                 cli::Target::Cranelift => unimplemented!(),

@@ -1,4 +1,12 @@
-use crate::{error::{Result, FileId}, typing::{TypeTree, TypeNames}, lexer::Lexer, parser::Parser, header::Header, resolution::Resolution, ast::{declaration::Decl}};
+use crate::{
+    ast::declaration::Decl,
+    error::{FileId, Result},
+    header::Header,
+    lexer::Lexer,
+    parser::Parser,
+    resolution::Resolution,
+    typing::{TypeNames, TypeTree},
+};
 
 pub mod ast;
 pub mod error;

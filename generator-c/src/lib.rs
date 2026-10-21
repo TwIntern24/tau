@@ -1,3 +1,10 @@
+use std::{
+    fmt::{self, Display, Formatter},
+    fs::File,
+    io::prelude::*,
+    ops::Deref,
+    rc::Rc,
+};
 use tau_core::{
     ast::{
         declaration::{Decl, DeclVisitor, Function, Structure},
@@ -9,13 +16,6 @@ use tau_core::{
     generator::Generator,
     lexer::{Token, TokenType},
     typing::{TypeCell, TypeDef},
-};
-use std::{
-    fmt::{self, Display, Formatter},
-    fs::File,
-    io::prelude::*,
-    ops::Deref,
-    rc::Rc,
 };
 
 #[derive(Default, PartialEq, Debug)]

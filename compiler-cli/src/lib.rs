@@ -1,21 +1,16 @@
 #![allow(clippy::needless_return)]
-use tau_core::{
-    error::FileDb,
-    generator::{
-        Compiler,
-        set_output,
-    },
-    process_file,
-};
-use tau_generator_c::{
-    CppCodeGenerator, CppHeaderGenerator,
-};
 use crate::cli::{ArgsBuilder, HELP_MESSAGE};
 use codespan_reporting::term::{
     self,
     termcolor::{ColorChoice, StandardStream},
 };
 use std::{env, fs, path::PathBuf, process::exit};
+use tau_core::{
+    error::FileDb,
+    generator::{Compiler, set_output},
+    process_file,
+};
+use tau_generator_c::{CppCodeGenerator, CppHeaderGenerator};
 
 mod cli;
 

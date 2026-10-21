@@ -25,14 +25,15 @@ impl<'a> Generator<'a> for CHeaderGenerator {
             .expect("expect filename is UTF-8")
             .replace(".", "_")
             .replace("/", "$");
-        let makro_name = module_name.to_uppercase();
+        let macro_name = format!("{}_H", module_name.to_uppercase());
 
-        let declarations = visit_vec(ast, |x| format!("{}", self.visit_decl(x)), "\n");
+        let declarations = visit_vec(ast, |x| format!("{}", self.visit_decl(x)), "\n\n");
 
         write!(
             file,
-            "#ifndef {makro_name}\n#define {makro_name} 1\nnamespace {module_name} {{\n{declarations}\n}}\n#endif\n"
-        ).unwrap();
+            "#ifndef {macro_name}\n#define {macro_name}\n\n{declarations}\n\n#endif\n"
+        )
+        .unwrap();
         Ok(())
     }
 }
@@ -56,20 +57,20 @@ impl DeclVisitor<'_> for CHeaderGenerator {
             .map(|pair| {
                 let (param_name, param_type) = pair;
                 format!(
-                    "{} {};",
+                    "\t{} {};",
                     CSourceCode::from(param_type),
                     CSourceCode::from(param_name)
                 )
             })
             .collect::<Vec<String>>()
             .join("\n");
-        format!("class {name} {{\npublic:\n{fields}}};").into()
+        format!("typedef struct {name} {{\n{fields}\n}} {name};").into()
     }
 
     fn visit_function(&mut self, function: &Function) -> CSourceCode {
         let name = CSourceCode::from(&function.name);
-        let is_extern = if function.modifiers.is_extern {
-            "\"C\" "
+        let extern_ = if function.modifiers.is_extern {
+            "extern "
         } else {
             ""
         };
@@ -79,7 +80,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
             |x| format!("{}", CSourceCode::from(x)),
             ", ",
         );
-        CSourceCode::from(format!("extern {is_extern}{return_type} {name}({params});"))
+        CSourceCode::from(format!("{extern_}{return_type} {name}({params});"))
     }
 
     fn visit_const(&mut self, var_name: &Identifier, var_type: &TypeCell, _: &Expr) -> CSourceCode {

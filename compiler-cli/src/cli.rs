@@ -28,7 +28,7 @@ pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
   -o, --output      set the output directory
   -i, --input       append the input tau file
   -t, --target      sets the compilation target
-                    accepts cpp and cranelift (tm)
+                    accepts c and cranelift (unimplemented)
   -h, --help        display this help message
 "#;
 

@@ -1,5 +1,5 @@
 [package]
-name = "tau"
+name = "tau-core"
 version = "0.1.0"
 edition = "2024"
 authors = ["Lovis Rentsch", "Karl Zschiebsch"]

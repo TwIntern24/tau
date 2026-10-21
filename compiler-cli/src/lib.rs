@@ -1,38 +1,27 @@
 #![allow(clippy::needless_return)]
-use crate::{
-    ast::declaration::Decl,
-    cli::{ArgsBuilder, HELP_MESSAGE},
-    compiler::{
+use tau_core::{
+    error::FileDb,
+    generator::{
         Compiler,
-        cpp::{CppCodeGenerator, CppHeaderGenerator},
         set_output,
     },
-    error::{FileDb, FileId, Result},
-    header::Header,
-    lexer::Lexer,
-    parser::Parser,
-    resolution::Resolution,
-    typing::{TypeNames, TypeTree},
+    process_file,
 };
+use tau_generator_c::{
+    CppCodeGenerator, CppHeaderGenerator,
+};
+use crate::cli::{ArgsBuilder, HELP_MESSAGE};
 use codespan_reporting::term::{
     self,
     termcolor::{ColorChoice, StandardStream},
 };
 use std::{env, fs, path::PathBuf, process::exit};
 
-mod ast;
 mod cli;
-mod compiler;
-mod error;
-mod header;
-mod lexer;
-mod parser;
-mod resolution;
-mod typing;
 
 type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
 
-fn main() -> DynResult {
+pub fn main() {
     let args = ArgsBuilder::new()
         .parse(env::args().collect())
         .unwrap()
@@ -42,10 +31,12 @@ fn main() -> DynResult {
     } else {
         // guaranteed to not be empty
         for filename in args.input() {
-            compile_file(filename, &args)?;
+            if let Err(message) = dbg!(compile_file(filename, &args)) {
+                println!("{:?}", dbg!(message));
+                exit(2);
+            }
         }
     }
-    Ok(())
 }
 
 fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
@@ -84,16 +75,6 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
         println!("tau: cannot access {}: No such file", filename.display());
         exit(1);
     }
-}
-
-fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl>, TypeTree, TypeNames)> {
-    let lexer = Lexer::new(&content, file_id);
-    let parser = Parser::new(lexer);
-    let ast = parser.parse()?;
-    let header = Header::new().headers(&ast)?;
-    let (types, fields) = header.analysed();
-    let fields = Resolution::new(&types, fields).resolve(&ast)?;
-    Ok((ast, types, fields))
 }
 
 #[cfg(test)]

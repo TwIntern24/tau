@@ -1,11 +1,12 @@
-use crate::{
+use tau_core::{
     ast::{
         declaration::{Decl, DeclVisitor, Function, Structure},
         expression::{Expr, ExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtVisitor},
     },
-    compiler::Generator,
+    error,
+    generator::Generator,
     lexer::{Token, TokenType},
     typing::{TypeCell, TypeDef},
 };
@@ -124,7 +125,7 @@ where
 pub struct CppHeaderGenerator;
 
 impl<'a> Generator<'a> for CppHeaderGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
+    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> error::Result<()> {
         let mut file = File::create(output).expect("error reading file");
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
@@ -225,7 +226,7 @@ impl<'a> CppCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CppCodeGenerator {
-    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> crate::error::Result<()> {
+    fn generate(&mut self, ast: &'a [Decl], output: &std::path::Path) -> error::Result<()> {
         // TODO:
         let mut file = File::create(output).unwrap();
         let mut path_buf = output.to_path_buf();

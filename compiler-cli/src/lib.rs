@@ -1,38 +1,22 @@
 #![allow(clippy::needless_return)]
-use crate::{
-    ast::declaration::Decl,
-    cli::{ArgsBuilder, HELP_MESSAGE},
-    compiler::{
-        Compiler,
-        cpp::{CppCodeGenerator, CppHeaderGenerator},
-        set_output,
-    },
-    error::{FileDb, FileId, Result},
-    header::Header,
-    lexer::Lexer,
-    parser::Parser,
-    resolution::Resolution,
-    typing::{TypeNames, TypeTree},
-};
+use crate::cli::{ArgsBuilder, HELP_MESSAGE};
 use codespan_reporting::term::{
     self,
     termcolor::{ColorChoice, StandardStream},
 };
 use std::{env, fs, path::PathBuf, process::exit};
+use tau_core::{
+    error::FileDb,
+    generator::{Compiler, set_output},
+    process_file,
+};
+use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
 
-mod ast;
 mod cli;
-mod compiler;
-mod error;
-mod header;
-mod lexer;
-mod parser;
-mod resolution;
-mod typing;
 
 type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
 
-fn main() -> DynResult {
+pub fn main() {
     let args = ArgsBuilder::new()
         .parse(env::args().collect())
         .unwrap()
@@ -42,10 +26,12 @@ fn main() -> DynResult {
     } else {
         // guaranteed to not be empty
         for filename in args.input() {
-            compile_file(filename, &args)?;
+            if let Err(message) = compile_file(filename, &args) {
+                println!("{:?}", message);
+                exit(2);
+            }
         }
     }
-    Ok(())
 }
 
 fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
@@ -56,15 +42,15 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
         let file_id = files.add(&display, &content);
         match process_file(file_id, &content) {
             Ok((ast, _, _)) => match args.target() {
-                cli::Target::Cpp => {
+                cli::Target::C => {
                     let compiler = Compiler::new(&ast);
-                    let header_output = set_output(filename.as_ref(), args.output(), "hpp");
+                    let header_output = set_output(filename.as_ref(), args.output(), "h");
                     compiler
-                        .compile(CppHeaderGenerator, &header_output)
+                        .compile(CHeaderGenerator, &header_output)
                         .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
-                    let code_output = set_output(filename.as_ref(), args.output(), "cpp");
+                    let code_output = set_output(filename.as_ref(), args.output(), "c");
                     compiler
-                        .compile(CppCodeGenerator::new(), &code_output)
+                        .compile(CCodeGenerator::new(), &code_output)
                         .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)
                 }
                 cli::Target::Cranelift => unimplemented!(),
@@ -86,44 +72,26 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
     }
 }
 
-fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl>, TypeTree, TypeNames)> {
-    let lexer = Lexer::new(&content, file_id);
-    let parser = Parser::new(lexer);
-    let ast = parser.parse()?;
-    let header = Header::new().headers(&ast)?;
-    let (types, fields) = header.analysed();
-    let fields = Resolution::new(&types, fields).resolve(&ast)?;
-    Ok((ast, types, fields))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{DynResult, compile_file};
-    use crate::{cli::ArgsBuilder, error::Result, lexer::Lexer, parser::Parser};
+    use crate::cli::ArgsBuilder;
 
     #[test]
     fn pipeline_arrays() -> DynResult {
         let args = ArgsBuilder::new().build();
-        compile_file("examples/arrays.tau", &args)
+        compile_file("../examples/arrays.tau", &args)
     }
 
     #[test]
     fn pipeline_heap() -> DynResult {
         let args = ArgsBuilder::new().build();
-        compile_file("examples/heap.tau", &args)
+        compile_file("../examples/heap.tau", &args)
     }
 
     #[test]
     fn pipeline_vec2() -> DynResult {
         let args = ArgsBuilder::new().build();
-        compile_file("examples/vec2.tau", &args)
-    }
-
-    #[test]
-    fn infinite_scoping() -> Result<()> {
-        let content = "{ { { { { { {} } } } } } }";
-        let lexer = Lexer::new(content, 0);
-        let mut parser = Parser::new(lexer);
-        parser.stmt().map(|_| {})
+        compile_file("../examples/vec2.tau", &args)
     }
 }

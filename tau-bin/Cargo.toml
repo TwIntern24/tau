@@ -1,0 +1,9 @@
+[package]
+name = "tau"
+version = "0.1.0"
+authors = ["Karl Zschiebsch"]
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+tau-cli = { path = "../compiler-cli" }

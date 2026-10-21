@@ -1,0 +1,12 @@
+[package]
+name = "tau-cli"
+version = "0.1.0"
+authors = ["Karl Zschiebsch"]
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+# The pure compiler
+tau-core = { path = "../compiler-core" }
+tau-generator-c = { path = "../generator-c" }
+codespan-reporting = "0.13.1"

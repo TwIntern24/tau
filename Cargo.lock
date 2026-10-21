@@ -122,8 +122,31 @@ dependencies = [
 name = "tau"
 version = "0.1.0"
 dependencies = [
+ "tau-cli",
+]
+
+[[package]]
+name = "tau-cli"
+version = "0.1.0"
+dependencies = [
+ "codespan-reporting",
+ "tau-core",
+ "tau-generator-c",
+]
+
+[[package]]
+name = "tau-core"
+version = "0.1.0"
+dependencies = [
  "codespan-reporting",
  "symbol_table",
+]
+
+[[package]]
+name = "tau-generator-c"
+version = "0.1.0"
+dependencies = [
+ "tau-core",
 ]
 
 [[package]]

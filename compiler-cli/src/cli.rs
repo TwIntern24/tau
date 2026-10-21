@@ -8,7 +8,7 @@ use std::{
 #[derive(Default)]
 pub enum Target {
     #[default]
-    Cpp,
+    C,
     Cranelift,
 }
 
@@ -17,7 +17,7 @@ impl TryFrom<String> for Target {
 
     fn try_from(string: String) -> Result<Self, Self::Error> {
         match string.as_str() {
-            "cpp" => Ok(Self::Cpp),
+            "c" => Ok(Self::C),
             "cranelift" => Ok(Self::Cranelift),
             _ => Err(format!("Could not convert {string} to target")),
         }
@@ -28,7 +28,7 @@ pub(crate) const HELP_MESSAGE: &str = r#"tau [options] inputs...
   -o, --output      set the output directory
   -i, --input       append the input tau file
   -t, --target      sets the compilation target
-                    accepts cpp and cranelift (tm)
+                    accepts c and cranelift (unimplemented)
   -h, --help        display this help message
 "#;
 

@@ -1,6 +1,7 @@
 use crate::type_::Type;
 use std::{ops::Deref, sync::Arc};
 
+#[derive(Debug)]
 pub enum TypeVar {
     /// Unbound variable of one specific type, but we don't know the type yet.
     Unbound { id: u64 },

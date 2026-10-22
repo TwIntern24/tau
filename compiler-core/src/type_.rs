@@ -5,12 +5,14 @@ pub mod type_var;
 
 pub use type_var::TypeVar;
 
+#[derive(Debug)]
 pub enum Type {
     /// A named type such as i32, f64 or a custom type such as Vec.
     /// The type can take other types as generic arguments
     Named {
-        package: GlobalSymbol,
-        module: GlobalSymbol,
+        // TODO: bring them back when we have a better implementation for imports
+        // package: GlobalSymbol,
+        // module: GlobalSymbol,
         name: GlobalSymbol,
         /// List of all generic types, can be empty.
         arguments: Vec<Arc<Type>>,
@@ -44,22 +46,24 @@ impl Type {
                 type_.as_ref().borrow().same_as_other_type(named)
             }
             (
+                // TODO: bring them back when we have a better implementation for imports
                 Self::Named {
-                    package,
-                    module,
+                    // package,
+                    // module,
                     name,
                     arguments,
                 },
                 Self::Named {
-                    package: other_package,
-                    module: other_module,
+                    // package: other_package,
+                    // module: other_module,
                     name: other_name,
                     arguments: other_arguments,
                 },
             ) => {
-                package == other_package
-                    && module == other_module
-                    && name == other_name
+                // package == other_package
+                // && module == other_module
+                // &&
+                name == other_name
                     && arguments.len() == other_arguments.len()
                     && arguments
                         .iter()

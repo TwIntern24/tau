@@ -15,6 +15,7 @@ pub mod header;
 pub mod lexer;
 pub mod parser;
 pub mod resolution;
+pub mod type_;
 pub mod typing;
 
 pub fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl>, TypeTree, TypeNames)> {

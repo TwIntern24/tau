@@ -405,8 +405,8 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         while self.has_next() {
             let op = self.peek()?.token_type();
             if let Some(l_bp) = Parser::<I>::postfix_binding_power(op) {
-                // If current binding power is below minimum, we return the left hand side
-                // expression
+                // If current binding power is below minimum, we return the left
+                // hand side expression
                 if l_bp < min_bp {
                     break;
                 }
@@ -421,8 +421,8 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                     unexpected => unreachable!("Unexpected operator: {:?}", unexpected),
                 }
             } else if let Some((l_bp, r_bp)) = Parser::<I>::infix_binding_power(op) {
-                // If current binding power is below minimum, we return the left hand side
-                // expression
+                // If current binding power is below minimum, we return the left
+                // hand side expression
                 if l_bp < min_bp {
                     break;
                 }
@@ -744,8 +744,8 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         if let Some(c) = self.last.take() {
             return Ok(c);
         }
-        // TODO: add better error handling, this was already covered in another pull
-        // request
+        // TODO: add better error handling, this was already covered in another
+        // pull request
         self.tokens.next().ok_or_else(|| Error::new(vec![]))?
     }
 

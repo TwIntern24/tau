@@ -581,7 +581,8 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
             .lookup_type(&function.return_type.borrow().clone())?;
         *function.return_type.borrow_mut() = ref_type.clone();
 
-        // When a new body begins, first define all parameters as local variables.
+        // When a new body begins, first define all parameters as local
+        // variables.
         self.begin_scope();
         for (param_name, param_type) in &function.params {
             let ref_type = self.types.lookup_type(&param_type.borrow().clone())?;
@@ -589,14 +590,14 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
             *param_type.borrow_mut() = ref_type;
         }
         if function.modifiers.is_extern {
-            // This function is defined outside of tau, there is no body that we can
-            // typecheck.
+            // This function is defined outside of tau, there is no body that we
+            // can typecheck.
             self.end_scope();
             return Ok(());
         }
 
-        // Check body. If an error occures, collect errors instead of throwing them
-        // directly.
+        // Check body. If an error occures, collect errors instead of throwing
+        // them directly.
         let mut errors = Option::None;
         for stmt in &function.body {
             if let Err(err) = self.visit_stmt(stmt) {

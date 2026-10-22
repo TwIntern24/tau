@@ -110,7 +110,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             return error(
                 diagnostic(
                     msg.to_string(),
-                    &Source::union(&operator.source(), &right.source()),
+                    &Source::merge(&operator.source(), &right.source()),
                 )
                 .with_label(label(
                     format!("right hand side has type {}", r),
@@ -157,7 +157,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             return error(
                 diagnostic(
                     msg.to_string(),
-                    &Source::union(&left.source(), &right.source()),
+                    &Source::merge(&left.source(), &right.source()),
                 )
                 .with_label(label(
                     format!("left hand side has type {}", l),
@@ -259,7 +259,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
                 return error(
                     diagnostic(
                         "index has to be an integer".to_string(),
-                        &Source::union(object.source(), index.source()),
+                        &Source::merge(object.source(), index.source()),
                     )
                     .with_label(label(format!("object has type {}", l), object.source()))
                     .with_label(label(format!("index has type {}", r), index.source())),
@@ -387,7 +387,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             return error(
                 diagnostic(
                     "if condition must be a boolean",
-                    &Source::union(condition.source(), if_branch.source()),
+                    &Source::merge(condition.source(), if_branch.source()),
                 )
                 .with_label(label(
                     format!("condition has type {}", c),
@@ -411,7 +411,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
 
             return error(diagnostic(
                 "if expression expected else branch".to_string(),
-                &Source::union(&condition.source(), &if_branch.source()),
+                &Source::merge(&condition.source(), &if_branch.source()),
             ));
         };
 
@@ -430,7 +430,7 @@ impl<'a> ExprVisitor<'a> for Resolution<'a> {
             return error(
                 diagnostic(
                     format!("if expression has not the same type for if and else"),
-                    &Source::union(&condition.source(), &else_branch.source()),
+                    &Source::merge(&condition.source(), &else_branch.source()),
                 )
                 .with_label(label(
                     format!("if expression has type {}", if_type),
@@ -639,7 +639,7 @@ impl<'a> DeclVisitor<'a> for Resolution<'a> {
                     "const '{}' has the type {}, but was declared as {}",
                     var_name, actual, expected
                 ),
-                &Source::union(&var_name.source(), &initializer.source()),
+                &Source::merge(&var_name.source(), &initializer.source()),
             ));
         }
         *var_type.borrow_mut() = actual;

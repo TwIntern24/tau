@@ -275,7 +275,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 let expr = self.expr()?;
                 self.consume(&TokenType::Semicolon)?;
                 Ok(Stmt::new(
-                    Source::union(&current.source(), &expr.source()),
+                    Source::merge(&current.source(), &expr.source()),
                     StmtType::Return { value: expr },
                 ))
             }
@@ -303,7 +303,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
         let rhs = self.consume(&TokenType::BraceRight)?;
         Ok(Stmt::new(
-            Source::union(&current.source(), &rhs.source()),
+            Source::merge(&current.source(), &rhs.source()),
             StmtType::Block { statements },
         ))
     }
@@ -347,7 +347,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let initializer = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         Ok(Stmt::new(
-            Source::union(&start.source(), &initializer.source()),
+            Source::merge(&start.source(), &initializer.source()),
             StmtType::Let {
                 name: Identifier::from(name),
                 var_type: RefCell::new(var_type),
@@ -364,7 +364,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
         let body = Rc::new(self.stmt_block()?);
-        let source = Source::union(&current.source(), &body.source());
+        let source = Source::merge(&current.source(), &body.source());
         let increment = Rc::new(Stmt::new(
             increment.source().clone(),
             StmtType::ExprStmt(increment),
@@ -390,7 +390,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let condition = self.expr()?;
         let body = Rc::new(self.stmt_block()?);
         Ok(Stmt::new(
-            Source::union(&current.source(), &body.source()),
+            Source::merge(&current.source(), &body.source()),
             StmtType::While { condition, body },
         ))
     }
@@ -462,7 +462,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let r_bp = Parser::<I>::prefix_binding_power(op.token_type());
         let rhs = self.expr_bp(r_bp)?;
         Ok(Expr::new(
-            Source::union(&op.source(), &rhs.source()),
+            Source::merge(&op.source(), &rhs.source()),
             ExprKind::Unary {
                 operator: op,
                 right: Rc::new(rhs),
@@ -481,7 +481,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 ));
             }
             Ok(Expr::new(
-                Source::union(&lhs.source(), &rhs.source()),
+                Source::merge(&lhs.source(), &rhs.source()),
                 ExprKind::Get {
                     left: Rc::new(lhs),
                     right: Identifier::from(rhs),
@@ -491,7 +491,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         } else {
             let rhs = self.expr_bp(bp)?;
             Ok(Expr::new(
-                Source::union(&lhs.source(), &rhs.source()),
+                Source::merge(&lhs.source(), &rhs.source()),
                 ExprKind::Binary {
                     left: Rc::new(lhs),
                     operator: next,
@@ -511,7 +511,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
         let rhs = self.consume(&TokenType::ParenRight)?;
         Ok(Expr::new(
-            Source::union(&lhs.source(), &rhs.source()),
+            Source::merge(&lhs.source(), &rhs.source()),
             ExprKind::Call {
                 callee: Rc::new(lhs),
                 arguments,
@@ -564,7 +564,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let current = self.consume(&TokenType::BraceRight)?;
 
         Ok(Expr::new(
-            Source::union(&array_type.source(), &current.source()),
+            Source::merge(&array_type.source(), &current.source()),
             ExprKind::CreateArray {
                 array_type: RefCell::new(Rc::new(TypeDef::Path(vec![array_type.into()]))),
                 array_size,
@@ -577,7 +577,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let rhs = self.expr()?;
         self.consume(&TokenType::BracketRight)?;
         Ok(Expr::new(
-            Source::union(&lhs.source(), &rhs.source()),
+            Source::merge(&lhs.source(), &rhs.source()),
             ExprKind::Index {
                 object: Rc::new(lhs),
                 index: Rc::new(rhs),
@@ -607,7 +607,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
         self.consume(&TokenType::BraceRight)?;
         Ok(Expr::new(
-            Source::union(&struct_name.source(), &current.source()),
+            Source::merge(&struct_name.source(), &current.source()),
             ExprKind::CreateStruct {
                 struct_type: RefCell::new(Rc::new(TypeDef::Path(
                     // TODO: include full module path
@@ -650,10 +650,10 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             self.consume(&TokenType::BraceLeft)?;
             let else_branch = self.stmt()?;
             let brace = self.consume(&TokenType::BraceRight)?;
-            let source = Source::union(&condition.source(), &brace.source());
+            let source = Source::merge(&condition.source(), &brace.source());
             (Some(Rc::new(else_branch)), source)
         } else {
-            let source = Source::union(&condition.source(), &brace.source());
+            let source = Source::merge(&condition.source(), &brace.source());
             (None, source)
         };
         Ok(Expr::new(

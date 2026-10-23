@@ -24,4 +24,4 @@ pub type UntypedDecl = Decl<Untyped>;
 
 pub type TypedExpr = Expr<Arc<Type>>;
 pub type TypedStmt = Stmt<Arc<Type>>;
-pub type TypedDecl = Expr<Arc<Type>>;
+pub type TypedDecl = Decl<Arc<Type>>;

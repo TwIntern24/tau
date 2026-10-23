@@ -1,10 +1,10 @@
 use crate::{source_code::CSourceCode, visit_vec};
-use std::{fs::File, io::prelude::*, rc::Rc};
+use std::{boxed::Box, fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        Typed, Untyped, UntypedDecl,
+        Typed, TypedDecl,
         declaration::{DeclFunc, DeclStruct, DeclVisitor},
-        expression::{Expr, UntypedExprVisitor},
+        expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtKind, StmtVisitor},
     },
@@ -32,7 +32,7 @@ impl<'a> CCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CCodeGenerator {
-    fn generate(&mut self, ast: &'a [UntypedDecl], output: &std::path::Path) -> error::Result<()> {
+    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> error::Result<()> {
         // TODO:
         let mut file = File::create(output).unwrap();
         let mut path_buf = output.to_path_buf();
@@ -58,10 +58,16 @@ impl<'a> Generator<'a> for CCodeGenerator {
     }
 }
 
-impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
+impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
+    type Type = Typed;
     type Output = CSourceCode;
 
-    fn visit_unary(&mut self, operator: &Token, right: &'a Rc<Expr>) -> CSourceCode {
+    fn visit_unary(
+        &mut self,
+        operator: &Token,
+        right: &'a Box<Expr<Self::Type>>,
+        _: &Self::Type,
+    ) -> CSourceCode {
         match operator.token_type() {
             TokenType::Add => format!("+{}", self.visit_expr(right)),
             TokenType::Sub => format!("-{}", self.visit_expr(right)),
@@ -75,9 +81,10 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_binary(
         &mut self,
-        left: &'a Rc<Expr>,
+        left: &'a Box<Expr<Self::Type>>,
         operator: &Token,
-        right: &'a Rc<Expr>,
+        right: &'a Box<Expr<Self::Type>>,
+        _: &Self::Type,
     ) -> CSourceCode {
         let mut render_op =
             |op: &str| format!("{} {op} {}", self.visit_expr(left), self.visit_expr(right));
@@ -107,34 +114,32 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_get(
         &mut self,
-        left: &'a Rc<Expr>,
+        left: &'a Box<Expr<Self::Type>>,
         right: &Identifier,
-        lookup: &TypeCell,
+        _: &Self::Type,
     ) -> CSourceCode {
         let left = self.visit_expr(left);
         let right = right.name();
-        match lookup.borrow().as_ref() {
-            TypeDef::Struct(_) => format!("{}.{}", left, right),
-            error => panic!(
-                "can only lookup structs and modules, not {:?} at {:?} with {:?}",
-                error, left, right
-            ),
-        }
-        .into()
+        format!("{}.{}", left, right).into()
     }
 
     fn visit_index(
         &mut self,
-        object: &'a Rc<Expr>,
-        index: &'a Rc<Expr>,
-        _: &TypeCell,
+        object: &'a Box<Expr<Self::Type>>,
+        index: &'a Box<Expr<Self::Type>>,
+        _: &Self::Type,
     ) -> CSourceCode {
         let object = self.visit_expr(object);
         let index = self.visit_expr(index);
         format!("{object}[{index}]").into()
     }
 
-    fn visit_call(&mut self, callee: &'a Rc<Expr>, arguments: &'a [Rc<Expr>]) -> CSourceCode {
+    fn visit_call(
+        &mut self,
+        callee: &'a Box<Expr<Self::Type>>,
+        arguments: &'a [Expr<Self::Type>],
+        _: &Self::Type,
+    ) -> CSourceCode {
         let callee = self.visit_expr(callee);
         let arguments = arguments
             .iter()
@@ -146,25 +151,27 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_create_array(
         &mut self,
-        array_type: &TypeCell,
-        array_size: &Option<Rc<Expr>>,
-        fields: &'a [Rc<Expr>],
+        _: &Identifier,
+        size: &Option<Box<Expr<Self::Type>>>,
+        fields: &'a [Expr<Self::Type>],
+        type_: &Self::Type,
     ) -> CSourceCode {
-        let array_type = CSourceCode::from(array_type);
-        let array_size = array_size
+        let type_ = CSourceCode::from(type_);
+        let size = size
             .as_ref()
             .map(|expr| self.visit_expr(expr.as_ref()))
             .unwrap_or_default();
         let fields = visit_vec(fields, |x| format!("{}", self.visit_expr(x)), ", ");
-        format!("new {array_type}[{array_size}]{{{fields}}}").into()
+        format!("{type_}[{size}]{{{fields}}}").into()
     }
 
     fn visit_create_struct(
         &mut self,
-        struct_type: &TypeCell,
-        fields: &'a [(Identifier, Rc<Expr>)],
+        _: &Identifier,
+        fields: &'a [(Identifier, Expr<Self::Type>)],
+        type_: &Self::Type,
     ) -> CSourceCode {
-        let struct_type: CSourceCode = struct_type.into();
+        let type_: CSourceCode = type_.as_ref().into();
         let fields = visit_vec(
             fields,
             |(field_name, field_init)| {
@@ -176,17 +183,18 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
             },
             ", ",
         );
-        format!("({struct_type}) {{{fields}}}").into()
+        format!("({type_}) {{{fields}}}").into()
     }
 
     fn visit_if(
         &mut self,
-        condition: &'a Rc<Expr>,
-        if_branch: &'a Rc<Stmt>,
-        else_branch: &'a Option<Rc<Stmt>>,
+        condition: &'a Box<Expr<Self::Type>>,
+        if_branch: &'a Box<Stmt<Self::Type>>,
+        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        type_: &Self::Type,
     ) -> CSourceCode {
         let condition = self.visit_expr(condition);
-        if let TypeDef::Unknown = expression_type.borrow().as_ref() {
+        if type_.as_ref().is_void() {
             let if_branch = self.visit_stmt(if_branch);
             if let Some(else_branch) = else_branch {
                 let else_branch = self.visit_stmt(else_branch);
@@ -195,7 +203,7 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
                 format!("if ({condition}) {{ {if_branch} }}").into()
             }
         } else {
-            let stmt2expr = |stmt: &'a Stmt| match stmt.kind() {
+            let stmt2expr = |stmt: &'a Stmt<Self::Type>| match stmt.kind() {
                 StmtKind::ExprStmt(expr) => expr,
                 _ => panic!("Could not convert statement to expression"),
             };
@@ -210,7 +218,7 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
         }
     }
 
-    fn visit_literal(&mut self, value: &Token) -> CSourceCode {
+    fn visit_literal(&mut self, value: &Token, _: &Self::Type) -> CSourceCode {
         match value.token_type() {
             TokenType::Bool(value) => value.to_string(),
             TokenType::Number(value) => value.to_string(),
@@ -220,13 +228,13 @@ impl<'a> UntypedExprVisitor<'a> for CCodeGenerator {
         .into()
     }
 
-    fn visit_variable(&mut self, name: &Identifier, _: &TypeCell) -> CSourceCode {
+    fn visit_variable(&mut self, name: &Identifier, _: &Self::Type) -> CSourceCode {
         name.into()
     }
 }
 
 impl<'a> StmtVisitor<'a> for CCodeGenerator {
-    type Type = Untyped;
+    type Type = Typed;
     type Output = CSourceCode;
 
     fn visit_stmt(&mut self, stmt: &'a Stmt<Self::Type>) -> Self::Output {
@@ -234,9 +242,9 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
             StmtKind::Block { statements } => self.visit_block(statements),
             StmtKind::Let {
                 name,
-                var_type,
+                declared,
                 initializer,
-            } => self.visit_let(name, var_type, initializer),
+            } => self.visit_let(name, declared, initializer),
             StmtKind::Return { value } => self.visit_return(value),
             StmtKind::Break => self.visit_break(),
             StmtKind::While { condition, body } => self.visit_while(condition, body),
@@ -259,11 +267,11 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_let(
         &mut self,
         name: &Identifier,
-        type_: &Typed,
+        _: &Option<Typed>,
         initializer: &'a Expr<Self::Type>,
     ) -> CSourceCode {
         let name = CSourceCode::from(name);
-        let var_type = CSourceCode::from(type_);
+        let var_type = CSourceCode::from(initializer.type_().as_ref());
         let initializer = self.visit_expr(initializer);
         format!("{var_type} {name} = {initializer};").into()
     }
@@ -280,7 +288,7 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Rc<Stmt<Self::Type>>,
+        body: &'a Box<Stmt<Self::Type>>,
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         self.begin_scope();
@@ -296,7 +304,7 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
 }
 
 impl<'a> DeclVisitor<'a> for CCodeGenerator {
-    type Type = Untyped;
+    type Type = Typed;
     type Output = Option<CSourceCode>;
 
     fn visit_import(&mut self, _: &[Identifier], _: &Source) -> Self::Output {
@@ -334,7 +342,7 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
         _: &Source,
     ) -> Self::Output {
         let name = CSourceCode::from(name);
-        let var_type = CSourceCode::from(type_);
+        let var_type = CSourceCode::from(type_.as_ref());
         let initializer = self.visit_expr(initializer);
         Some(format!("{var_type} {name} = {initializer};").into())
     }

@@ -82,6 +82,10 @@ impl TypeVar {
     pub fn is_str(&self) -> bool {
         follow_link!(self, is_str)
     }
+
+    pub fn is_void(&self) -> bool {
+        follow_link!(self, is_void)
+    }
 }
 
 pub fn collapse_links(t: Arc<Type>) -> Arc<Type> {

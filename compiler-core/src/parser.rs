@@ -323,7 +323,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let start = self.advance()?;
         let mut statements = Vec::new();
         while *self.peek()?.token_type() != TokenType::BraceRight {
-            statements.push(Box::new(self.stmt()?));
+            statements.push(self.stmt()?);
         }
         let end = self.consume(&TokenType::BraceRight)?;
         let source = start.source().merge(&end.source());
@@ -381,14 +381,14 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
     fn stmt_for(&mut self) -> Result<UntypedStmt> {
         let current = self.advance()?;
-        let initializer = Box::new(self.stmt()?);
+        let initializer = self.stmt()?;
         self.consume(&TokenType::Semicolon)?;
         let condition = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
-        let body = Box::new(self.stmt_block()?);
+        let body = self.stmt_block()?;
         let source = increment.source().clone();
-        let increment = Box::new(UntypedStmt::new(StmtKind::ExprStmt(increment), source));
+        let increment = UntypedStmt::new(StmtKind::ExprStmt(increment), source);
         let source = body.source().clone();
         let body = Box::new(UntypedStmt::new(
             StmtKind::Block {
@@ -399,10 +399,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let source = Source::merge(&current.source(), &body.source());
         let statements = vec![
             initializer,
-            Box::new(UntypedStmt::new(
-                StmtKind::While { condition, body },
-                source.clone(),
-            )),
+            UntypedStmt::new(StmtKind::While { condition, body }, source.clone()),
         ];
         Ok(UntypedStmt::new(StmtKind::Block { statements }, source))
     }

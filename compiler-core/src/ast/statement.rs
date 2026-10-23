@@ -30,7 +30,7 @@ impl<T> Location for Stmt<T> {
 #[derive(Debug)]
 pub enum StmtKind<T> {
     Block {
-        statements: Vec<Box<Stmt<T>>>,
+        statements: Vec<Stmt<T>>,
     },
     Let {
         name: Identifier,
@@ -67,7 +67,7 @@ pub trait StmtVisitor<'a> {
         }
     }
 
-    fn visit_block(&mut self, statements: &'a [Box<Stmt<Self::Type>>]) -> Self::Output;
+    fn visit_block(&mut self, statements: &'a [Stmt<Self::Type>]) -> Self::Output;
 
     fn visit_let(
         &mut self,

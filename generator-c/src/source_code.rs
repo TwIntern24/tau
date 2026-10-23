@@ -1,5 +1,8 @@
 use std::fmt::{self, Display, Formatter};
-use tau_core::{ast::identifier::Identifier, type_::Type};
+use tau_core::{
+    ast::{Typed, identifier::Identifier},
+    type_::{Type, TypeVar},
+};
 
 #[derive(Default, PartialEq, Debug)]
 pub struct CSourceCode(String);
@@ -19,56 +22,35 @@ impl Display for CSourceCode {
 impl From<&Type> for CSourceCode {
     fn from(type_def: &Type) -> Self {
         CSourceCode(match type_def {
-            Type::Struct(structure) => {
-                let mut path = String::new();
-                path.push_str(structure.name[0].name());
-                for item in &structure.name[1..] {
-                    path.push_str("::");
-                    path.push_str(item.name());
-                }
-                path.into()
-            }
-            Type::Function(_) => todo!(),
-            Type::Array(name) => format!("{}*", CSourceCode::from(name.as_ref())),
-            Type::Path(name) => panic!("path '{:?}' should have been deref", name),
-            Type::Number(number) => {
-                if number.float {
-                    match number.size {
-                        32 => "float",
-                        64 => "double",
-                        _ => unreachable!(),
-                    }
-                    .into()
-                } else {
-                    let int = match number.size {
-                        8 => "char",
-                        16 => "short",
-                        32 => "int",
-                        64 => "long",
-                        _ => unreachable!(),
-                    };
-                    if number.signed {
-                        int.into()
-                    } else {
-                        format!("unsigned {int}")
-                    }
-                }
-            }
-            Type::Native(name) => String::from(match *name {
+            Type::Fn { .. } => todo!(),
+            Type::Named { name, .. } => String::from(match name.as_str() {
                 "str" => "char*",
                 "bool" => "int",
                 "void" => "void",
-                _ => unreachable!(),
+                other => other,
             }),
-            Type::RawPointer(ptr) => format!("{}*", CSourceCode::from(ptr.as_ref())),
-            other => panic!("unhandled type: {}", other),
+            Type::Var { type_ } => return CSourceCode::from(&*type_.borrow()),
+            Type::Ptr { unchecked, type_ } => {
+                let type_ = CSourceCode::from(type_.as_ref());
+                let ptr = if *unchecked { '*' } else { '&' };
+                format!("{}{}", type_, ptr)
+            }
         })
     }
 }
 
-impl From<&TypeCell> for CSourceCode {
-    fn from(type_cell: &TypeCell) -> Self {
-        CSourceCode::from(type_cell.borrow().as_ref())
+impl From<&Typed> for CSourceCode {
+    fn from(typed: &Typed) -> Self {
+        CSourceCode::from(&*typed.as_ref())
+    }
+}
+
+impl From<&TypeVar> for CSourceCode {
+    fn from(type_var: &TypeVar) -> Self {
+        match type_var {
+            TypeVar::Link { type_ } => CSourceCode::from(type_),
+            _ => todo!(),
+        }
     }
 }
 
@@ -91,9 +73,12 @@ impl From<&Identifier> for CSourceCode {
     }
 }
 
-impl From<&(Identifier, TypeCell)> for CSourceCode {
-    fn from((name, type_cell): &(Identifier, TypeCell)) -> Self {
-        CSourceCode(format!("{} {name}", CSourceCode::from(type_cell)))
+impl From<&(Identifier, Typed)> for CSourceCode {
+    fn from((name, type_): &(Identifier, Typed)) -> Self {
+        let type_ = CSourceCode::from(type_.as_ref());
+        // C specifies first the type, and then the name.
+        // Therefore we need to swap the arguments here.
+        CSourceCode(format!("{type_} {name}"))
     }
 }
 

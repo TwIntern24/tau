@@ -2,7 +2,7 @@ use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        Untyped,
+        Typed,
         declaration::{Decl, DeclFunc, DeclStruct, DeclVisitor},
         expression::Expr,
         identifier::Identifier,
@@ -15,11 +15,7 @@ use tau_core::{
 pub struct CHeaderGenerator;
 
 impl<'a> Generator<'a> for CHeaderGenerator {
-    fn generate(
-        &mut self,
-        ast: &'a [Decl<Untyped>],
-        output: &std::path::Path,
-    ) -> error::Result<()> {
+    fn generate(&mut self, ast: &'a [Decl<Typed>], output: &std::path::Path) -> error::Result<()> {
         let mut file = File::create(output).expect("error reading file");
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
@@ -45,7 +41,7 @@ impl<'a> Generator<'a> for CHeaderGenerator {
 
 impl DeclVisitor<'_> for CHeaderGenerator {
     // TODO: switch to typed
-    type Type = Untyped;
+    type Type = Typed;
     type Output = CSourceCode;
 
     fn visit_import(&mut self, path: &[Identifier], _: &Source) -> CSourceCode {
@@ -66,7 +62,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
                 let (param_name, param_type) = pair;
                 format!(
                     "\t{} {};",
-                    CSourceCode::from(param_type),
+                    CSourceCode::from(param_type.as_ref()),
                     CSourceCode::from(param_name)
                 )
             })
@@ -82,7 +78,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         } else {
             ""
         };
-        let return_type = CSourceCode::from(function.return_type.borrow().as_ref());
+        let return_type = CSourceCode::from(function.return_type.as_ref());
         let params = visit_vec(
             &function.params,
             |x| format!("{}", CSourceCode::from(x)),
@@ -93,13 +89,13 @@ impl DeclVisitor<'_> for CHeaderGenerator {
 
     fn visit_const(
         &mut self,
-        var_name: &Identifier,
-        var_type: &TypeCell,
+        name: &Identifier,
+        type_: &Typed,
         _: &Expr<Self::Type>,
         _: &Source,
     ) -> CSourceCode {
-        let var_name = CSourceCode::from(var_name);
-        let var_type = CSourceCode::from(var_type.borrow().as_ref());
-        format!("extern {var_type} {var_name};").into()
+        let name = CSourceCode::from(name);
+        let type_ = CSourceCode::from(type_);
+        format!("extern {type_} {name};").into()
     }
 }

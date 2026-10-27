@@ -106,3 +106,36 @@ pub trait DeclVisitor<'a> {
         source: &'a Source,
     ) -> Self::Output;
 }
+
+pub trait DeclFolder {
+    type Type;
+    type Output;
+
+    fn fold_decl(&mut self, decl: Decl<Self::Type>) -> Self::Output {
+        let (kind, source) = (decl.kind, decl.source);
+        match kind {
+            DeclKind::Import(name) => self.fold_import(name, source),
+            DeclKind::Struct(structure) => self.fold_struct(structure, source),
+            DeclKind::Func(function) => self.fold_function(function, source),
+            DeclKind::Const {
+                name,
+                type_,
+                initializer,
+            } => self.fold_const(name, type_, initializer, source),
+        }
+    }
+
+    fn fold_import(&mut self, path: Vec<Identifier>, source: Source) -> Self::Output;
+
+    fn fold_struct(&mut self, struct_: DeclStruct, source: Source) -> Self::Output;
+
+    fn fold_function(&mut self, func: DeclFunc<Self::Type>, source: Source) -> Self::Output;
+
+    fn fold_const(
+        &mut self,
+        name: Identifier,
+        type_: Typed,
+        initializer: Expr<Self::Type>,
+        source: Source,
+    ) -> Self::Output;
+}

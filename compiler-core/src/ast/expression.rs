@@ -270,3 +270,115 @@ pub trait TypedExprVisitor<'a> {
 
     fn visit_variable(&mut self, name: &'a Identifier, type_: &'a Self::Type) -> Self::Output;
 }
+
+pub trait ExprFolder {
+    type Type;
+    type Output;
+
+    fn fold_expr(&mut self, expr: Expr<Self::Type>) -> Self::Output {
+        let (kind, type_, source) = (expr.kind, expr.type_, expr.source);
+        match kind {
+            ExprKind::Unary { operator, right } => self.fold_unary(operator, right, source, type_),
+            ExprKind::Binary {
+                left,
+                operator,
+                right,
+            } => self.fold_binary(left, operator, right, source, type_),
+            ExprKind::Get { left, right } => self.fold_get(left, right, source, type_),
+            ExprKind::Index { object, index } => self.fold_index(object, index, source, type_),
+            ExprKind::Call { callee, arguments } => {
+                self.fold_call(callee, arguments, source, type_)
+            }
+            ExprKind::CreateArray { name, size, fields } => {
+                self.fold_create_array(name, size, fields, source, type_)
+            }
+            ExprKind::CreateStruct { name, fields } => {
+                self.fold_create_struct(name, fields, source, type_)
+            }
+            ExprKind::If {
+                condition,
+                if_branch,
+                else_branch,
+            } => self.fold_if(condition, if_branch, else_branch, source, type_),
+            ExprKind::Literal(value) => self.fold_literal(value, source, type_),
+            ExprKind::Variable { name } => self.fold_variable(name, source, type_),
+        }
+    }
+
+    fn fold_unary(
+        &mut self,
+        operator: Token,
+        right: Box<Expr<Self::Type>>,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_binary(
+        &mut self,
+        left: Box<Expr<Self::Type>>,
+        operator: Token,
+        right: Box<Expr<Self::Type>>,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_get(
+        &mut self,
+        left: Box<Expr<Self::Type>>,
+        right: Identifier,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_index(
+        &mut self,
+        object: Box<Expr<Self::Type>>,
+        index: Box<Expr<Self::Type>>,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_call(
+        &mut self,
+        callee: Box<Expr<Self::Type>>,
+        arguments: Vec<Expr<Self::Type>>,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_create_array(
+        &mut self,
+        name: Identifier,
+        size: Option<Box<Expr<Self::Type>>>,
+        fields: Vec<Expr<Self::Type>>,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_create_struct(
+        &mut self,
+        name: Identifier,
+        fields: Vec<(Identifier, Expr<Self::Type>)>,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_if(
+        &mut self,
+        condition: Box<Expr<Self::Type>>,
+        if_branch: Box<Stmt<Self::Type>>,
+        else_branch: Option<Box<Stmt<Self::Type>>>,
+        source: Source,
+
+        type_: Self::Type,
+    ) -> Self::Output;
+
+    fn fold_literal(&mut self, value: Token, source: Source, type_: Self::Type) -> Self::Output;
+
+    fn fold_variable(
+        &mut self,
+        name: Identifier,
+        source: Source,
+        type_: Self::Type,
+    ) -> Self::Output;
+}

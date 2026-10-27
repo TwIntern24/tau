@@ -88,3 +88,47 @@ pub trait StmtVisitor<'a> {
 
     fn visit_expr_stmt(&mut self, expr: &'a Expr<Self::Type>) -> Self::Output;
 }
+
+pub trait StmtFolder {
+    type Type;
+    type Output;
+
+    fn fold_stmt(&mut self, stmt: Stmt<Self::Type>) -> Self::Output {
+        let (kind, source) = (stmt.kind, stmt.source);
+        match kind {
+            StmtKind::Block { statements } => self.fold_block(statements, source),
+            StmtKind::Let {
+                name,
+                declared,
+                initializer,
+            } => self.fold_let(name, declared, initializer, source),
+            StmtKind::Return { value } => self.fold_return(value, source),
+            StmtKind::Break => self.fold_break(source),
+            StmtKind::While { condition, body } => self.fold_while(condition, body, source),
+            StmtKind::ExprStmt(expr) => self.fold_expr_stmt(expr, source),
+        }
+    }
+
+    fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, source: Source) -> Self::Output;
+
+    fn fold_let(
+        &mut self,
+        name: Identifier,
+        declared: Option<Typed>,
+        initializer: Expr<Self::Type>,
+        source: Source,
+    ) -> Self::Output;
+
+    fn fold_return(&mut self, value: Expr<Self::Type>, source: Source) -> Self::Output;
+
+    fn fold_break(&mut self, source: Source) -> Self::Output;
+
+    fn fold_while(
+        &mut self,
+        condition: Expr<Self::Type>,
+        body: Box<Stmt<Self::Type>>,
+        source: Source,
+    ) -> Self::Output;
+
+    fn fold_expr_stmt(&mut self, expr: Expr<Self::Type>, source: Source) -> Self::Output;
+}

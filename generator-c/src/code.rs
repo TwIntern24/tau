@@ -2,7 +2,7 @@ use crate::{source_code::CSourceCode, visit_vec};
 use std::{boxed::Box, fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        Typed, TypedDecl,
+        TypedDecl,
         declaration::{DeclFunc, DeclStruct, DeclVisitor},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
@@ -11,6 +11,7 @@ use tau_core::{
     error,
     generator::Generator,
     lexer::{Source, Token, TokenType},
+    type_::Typed
 };
 
 pub struct CCodeGenerator {

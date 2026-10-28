@@ -1,4 +1,4 @@
-use crate::{lexer::Source, type_::Type};
+use crate::{lexer::Source, type_::{Type, prelude::{Typed, Untyped}}};
 use std::sync::Arc;
 
 pub mod declaration;
@@ -14,9 +14,6 @@ pub use statement::Stmt;
 pub trait Location {
     fn source(&self) -> &Source;
 }
-
-pub type Untyped = ();
-pub type Typed = Arc<Type>;
 
 pub type UntypedExpr = Expr<Untyped>;
 pub type UntypedStmt = Stmt<Untyped>;

@@ -2,7 +2,6 @@ use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        Typed,
         declaration::{Decl, DeclFunc, DeclStruct, DeclVisitor},
         expression::Expr,
         identifier::Identifier,
@@ -10,6 +9,7 @@ use tau_core::{
     error,
     generator::Generator,
     lexer::Source,
+    type_::Typed
 };
 
 pub struct CHeaderGenerator;

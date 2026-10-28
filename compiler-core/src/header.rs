@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Typed, UntypedDecl,
+        UntypedDecl,
         declaration::{DeclFunc, DeclStruct, DeclVisitor},
         expression::Expr,
         identifier::Identifier,
@@ -8,7 +8,7 @@ use crate::{
     error::{FileDb, Result},
     lexer::Source,
     process_file,
-    type_::Type,
+    type_::{Type, prelude::Typed},
 };
 use codespan_reporting::term::{
     self,

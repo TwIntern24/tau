@@ -1,8 +1,13 @@
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, sync::Arc, ops::Deref};
 use symbol_table::{GlobalSymbol, static_symbol};
+use codespan_reporting::diagnostic::Diagnostic;
+use crate::{error::{error, Result}, type_::environment::Environment};
 
+pub mod environment;
+pub mod prelude;
 pub mod type_var;
 
+pub use crate::type_::prelude::*;
 pub use type_var::TypeVar;
 
 #[derive(Debug)]
@@ -170,5 +175,119 @@ impl Type {
             Self::Var { type_ } => type_.borrow().is_void(),
             _ => false,
         }
+    }
+}
+
+fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<()> {
+    match type_ {
+        Type::Named { arguments, .. } => {
+            for argument in arguments {
+                unify_unbound_type(argument, own_id)?;
+            }
+            Ok(())
+        }
+
+        Type::Var { type_ } => match type_.borrow().deref() {
+            TypeVar::Link { type_, .. } => unify_unbound_type(type_, own_id),
+
+            TypeVar::Unbound { id } => {
+                if id == &own_id {
+                    error(Diagnostic::error().with_message("recursive type"))
+                } else {
+                    Ok(())
+                }
+            }
+
+            TypeVar::Generic { .. } => Ok(()),
+        }
+
+        Type::Fn { arguments, return_ } => {
+            for argument in arguments {
+                unify_unbound_type(argument, own_id)?;
+            }
+            unify_unbound_type(return_, own_id)
+        }
+
+        Type::Ptr { type_, .. } => {
+            unify_unbound_type(type_, own_id)
+        }
+    }
+}
+
+fn match_fun_type(
+    type_: Arc<Type>,
+    arity: usize,
+    environment: &mut Environment<'_>,
+) -> Result<(Vec<Arc<Type>>, Arc<Type>)> {
+    if let Type::Var { type_ } = type_.deref() {
+        let new_value = match type_.borrow().deref() {
+            TypeVar::Link { type_, .. } => {
+                return match_fun_type(type_.clone(), arity, environment);
+            }
+
+            TypeVar::Unbound { .. } => {
+                let arguments: Vec<_> = (0..arity).map(|_| environment.new_unbound_var()).collect();
+                let return_ = environment.new_unbound_var();
+                Some((arguments, return_))
+            }
+
+            TypeVar::Generic { .. } => None,
+        };
+
+        if let Some((arguments, return_)) = new_value {
+            *type_.borrow_mut() = TypeVar::Link {
+                type_: fn_(arguments.clone(), return_.clone()),
+            };
+            return Ok((arguments, return_));
+        }
+    }
+
+    if let Type::Fn { arguments, return_ } = type_.deref() {
+        return if arguments.len() != arity {
+            error(Diagnostic::error().with_message("function arity don't match"))
+        } else {
+            Ok((arguments.clone(), return_.clone()))
+        };
+    }
+
+    error(Diagnostic::error().with_message("type is not a function"))
+}
+
+pub fn generalise(t: Arc<Type>) -> Arc<Type> {
+    match t.deref() {
+        Type::Var { type_ } => match type_.borrow().deref() {
+            TypeVar::Unbound { id } => generic_var(*id),
+            TypeVar::Link { type_ } => generalise(type_.clone()),
+            TypeVar::Generic { .. } => Arc::new(Type::Var {
+                type_: type_.clone(),
+            }),
+        },
+
+        Type::Named {
+            name,
+            arguments,
+        } => {
+            let arguments = arguments
+                .iter()
+                .map(|type_| generalise(type_.clone()))
+                .collect();
+            Arc::new(Type::Named {
+                name: name.clone(),
+                arguments,
+            })
+        }
+
+        Type::Fn { arguments, return_ } => Arc::new(Type::Fn {
+            arguments: arguments
+                .iter()
+                .map(|type_| generalise(type_.clone()))
+                .collect(),
+            return_: generalise(return_.clone()),
+        }),
+
+        Type::Ptr { unchecked, type_ } => Arc::new(Type::Ptr {
+            unchecked: *unchecked,
+            type_: generalise(type_.clone())
+        }),
     }
 }

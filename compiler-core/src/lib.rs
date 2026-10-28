@@ -14,6 +14,7 @@ pub mod lexer;
 pub mod parser;
 pub mod resolution;
 pub mod type_;
+pub mod uid;
 
 pub fn process_file(file_id: FileId, content: &str) -> Result<(Vec<Decl<()>>, TypeMap, TypeMap)> {
     let lexer = Lexer::new(&content, file_id);

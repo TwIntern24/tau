@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use tau_core::{
-    ast::{Typed, identifier::Identifier},
-    type_::{Type, TypeVar},
+    ast::{identifier::Identifier},
+    type_::{Type, Typed, TypeVar},
 };
 
 #[derive(Default, PartialEq, Debug)]

@@ -1,5 +1,7 @@
-use crate::{ast::identifier::Identifier, lexer::source::Source};
+use crate::{ast::{origin::{BinaryOp, UnaryOp, Literal, ExprOrigin}, identifier::Identifier}, lexer::source::Source, error::{self, diagnostic, Result}};
 use symbol_table::{GlobalSymbol, static_symbol};
+use codespan_reporting::diagnostic::Diagnostic;
+use std::fmt::Debug;
 
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -11,6 +13,8 @@ pub enum TokenType {
     BraceRight,   // }
     BracketLeft,  // [
     BracketRight, // ]
+
+    // Punctuation
     Dot,
     Comma,     // ,
     Colon,     // :
@@ -25,7 +29,7 @@ pub enum TokenType {
     Set,
     SetAdd,
     SetSub,
-    SetStar,
+    SetMul,
     SetDiv,
     Mod,
     Low,
@@ -61,23 +65,83 @@ pub enum TokenType {
 
     // Literal
     Bool(bool),
-    Number(f64),
+    Int(i64),
+    Float(f64),
     String(String),
+
+    // Identifiers, e.g types and variables
     Identifier(GlobalSymbol),
 
     // Misc
     Eof,
 }
 
-impl From<Token> for TokenType {
-    fn from(value: Token) -> Self {
-        value.token_type
-    }
-}
-
 impl TokenType {
     pub fn is_identifier(&self) -> bool {
         matches!(self, Self::Identifier(_))
+    }
+}
+
+impl TryFrom<TokenType> for BinaryOp {
+    type Error = error::Error;
+
+    fn try_from(value: TokenType) -> Result<Self> {
+        Ok(match value {
+            TokenType::Add => BinaryOp::Add,
+            TokenType::Sub => BinaryOp::Sub,
+            TokenType::Div => BinaryOp::Div,
+            TokenType::Star => BinaryOp::Mul,
+            TokenType::Mod => BinaryOp::Mod,
+
+            TokenType::Set => BinaryOp::Set,
+            TokenType::SetAdd => BinaryOp::SetAdd,
+            TokenType::SetSub => BinaryOp::SetSub,
+            TokenType::SetMul => BinaryOp::SetMul,
+            TokenType::SetDiv => BinaryOp::SetDiv,
+
+            TokenType::Eq => BinaryOp::Eq,
+            TokenType::Neq => BinaryOp::Neq,
+
+            TokenType::Low => BinaryOp::Low,
+            TokenType::Leq => BinaryOp::Leq,
+            TokenType::Gre => BinaryOp::Gre,
+            TokenType::Geq => BinaryOp::Geq,
+            
+            TokenType::And => BinaryOp::And,
+            TokenType::Or => BinaryOp::Or,
+
+            _ => return error::error(Diagnostic::error().with_message("token is not a binary operator")),
+        })
+    }
+}
+
+impl TryFrom<TokenType> for UnaryOp {
+    type Error = error::Error;
+
+    fn try_from(value: TokenType) -> Result<Self> {
+        Ok(match value {
+            TokenType::Sub => Self::Neg,
+            TokenType::Not => Self::Not,
+            TokenType::Ref => Self::Ref,
+            TokenType::Star => Self::Deref,
+
+            _ => return error::error(Diagnostic::error().with_message("token is not a binary operator")),
+        })
+    }
+}
+
+impl TryFrom<TokenType> for Literal {
+    type Error = error::Error;
+
+    fn try_from(value: TokenType) -> Result<Self> {
+        Ok(match value {
+            TokenType::Bool(value) => Self::Bool(value),
+            TokenType::Int(value) => Self::Int(value),
+            TokenType::Float(value) => Self::Float(value),
+            TokenType::String(value) => Self::String(value),
+
+            _ => return error::error(Diagnostic::error().with_message("token is not a binary operator")),
+        })
     }
 }
 
@@ -101,9 +165,29 @@ impl Token {
     }
 }
 
+impl From<Token> for TokenType {
+    fn from(value: Token) -> Self {
+        value.token_type
+    }
+}
+
 impl From<Token> for Source {
     fn from(value: Token) -> Self {
         value.source
+    }
+}
+
+impl<O> TryFrom<Token> for ExprOrigin<O>
+where
+    O: TryFrom<TokenType> + Debug,
+    error::Error: From<<O as TryFrom<TokenType>>::Error>
+{
+    type Error = error::Error;
+
+    fn try_from(value: Token) -> Result<Self> {
+        let (type_, source) = (value.token_type, value.source);
+        let kind = O::try_from(type_)?;
+        Ok(Self::new(kind, source))
     }
 }
 

@@ -61,7 +61,7 @@ impl<'a> Lexer<'a> {
             }
             '*' => {
                 if self.matchc('=') {
-                    TokenType::SetStar
+                    TokenType::SetMul
                 } else {
                     TokenType::Star
                 }
@@ -178,26 +178,37 @@ impl<'a> Lexer<'a> {
 
     fn number(&mut self) -> Result<TokenType> {
         self.start = self.chars.offset() - 1;
-        let mut is_float = false;
         while !self.is_at_end() {
             let next = self.peek()?;
             if Lexer::is_digit(next) {
                 self.advance()?;
             } else if next == '.' {
-                if is_float {
-                    return error(diagnostic(
-                        "found a second dot in the float",
-                        &self.make_source(),
-                    ));
-                }
-                is_float = true;
                 self.advance()?;
+                return self.float();
             } else {
                 break;
             }
         }
 
-        Ok(TokenType::Number(self.view().parse().unwrap()))
+        Ok(TokenType::Int(self.view().parse().unwrap()))
+    }
+
+    fn float(&mut self) -> Result<TokenType> {
+        while !self.is_at_end() {
+            let next = self.peek()?;
+            if Lexer::is_digit(next) {
+                self.advance()?;
+            } else if next == '.' {
+                return error(diagnostic(
+                    "found a second dot in the float",
+                    &self.make_source(),
+                ));
+            } else {
+                break;
+            }
+        }
+        
+        Ok(TokenType::Float(self.view().parse().unwrap()))
     }
 
     /// Parses a single string.

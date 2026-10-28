@@ -4,6 +4,7 @@ use codespan_reporting::diagnostic::Diagnostic;
 use crate::{error::{error, Result}, type_::environment::Environment};
 
 pub mod environment;
+pub mod expression;
 pub mod prelude;
 pub mod type_var;
 

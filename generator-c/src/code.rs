@@ -7,10 +7,11 @@ use tau_core::{
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
         statement::{Stmt, StmtKind, StmtVisitor},
+        origin::{Literal, BinaryOp, UnaryOp, ExprOrigin},
     },
     error,
     generator::Generator,
-    lexer::{Source, Token, TokenType},
+    lexer::Source,
     type_::Typed
 };
 
@@ -65,17 +66,15 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_unary(
         &mut self,
-        operator: &Token,
+        operator: &ExprOrigin<UnaryOp>,
         right: &'a Box<Expr<Self::Type>>,
         _: &Self::Type,
     ) -> CSourceCode {
-        match operator.token_type() {
-            TokenType::Add => format!("+{}", self.visit_expr(right)),
-            TokenType::Sub => format!("-{}", self.visit_expr(right)),
-            TokenType::Not => format!("!{}", self.visit_expr(right)),
-            TokenType::Star => format!("(*{})", self.visit_expr(right)),
-            TokenType::Ref => format!("(&{})", self.visit_expr(right)),
-            _ => todo!(),
+        match operator.kind() {
+            UnaryOp::Neg => format!("-{}", self.visit_expr(right)),
+            UnaryOp::Not => format!("!{}", self.visit_expr(right)),
+            UnaryOp::Ref => format!("(&{})", self.visit_expr(right)),
+            UnaryOp::Deref => format!("(*{})", self.visit_expr(right)),
         }
         .into()
     }
@@ -83,32 +82,35 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
     fn visit_binary(
         &mut self,
         left: &'a Box<Expr<Self::Type>>,
-        operator: &Token,
+        operator: &ExprOrigin<BinaryOp>,
         right: &'a Box<Expr<Self::Type>>,
         _: &Self::Type,
     ) -> CSourceCode {
         let mut render_op =
             |op: &str| format!("{} {op} {}", self.visit_expr(left), self.visit_expr(right));
-        match operator.token_type() {
-            TokenType::Add => render_op("+"),
-            TokenType::Sub => render_op("-"),
-            TokenType::Star => render_op("*"),
-            TokenType::Div => render_op("/"),
-            TokenType::Eq => render_op("=="),
-            TokenType::Neq => render_op("!="),
-            TokenType::Low => render_op("<"),
-            TokenType::Leq => render_op("<="),
-            TokenType::Gre => render_op(">"),
-            TokenType::Geq => render_op(">="),
-            TokenType::And => render_op("&&"),
-            TokenType::Or => render_op("||"),
-            TokenType::Vbar => render_op("|"),
-            TokenType::Set => render_op("="),
-            TokenType::SetAdd => render_op("+="),
-            TokenType::SetSub => render_op("-="),
-            TokenType::SetStar => render_op("*="),
-            TokenType::SetDiv => render_op("/="),
-            _ => todo!("{:?}", operator),
+        match operator.kind() {
+            BinaryOp::Add => render_op("+"),
+            BinaryOp::Sub => render_op("-"),
+            BinaryOp::Mul => render_op("*"),
+            BinaryOp::Div => render_op("/"),
+            BinaryOp::Mod => render_op("%"),
+
+            BinaryOp::Eq => render_op("=="),
+            BinaryOp::Neq => render_op("!="),
+
+            BinaryOp::Low => render_op("<"),
+            BinaryOp::Leq => render_op("<="),
+            BinaryOp::Gre => render_op(">"),
+            BinaryOp::Geq => render_op(">="),
+
+            BinaryOp::And => render_op("&&"),
+            BinaryOp::Or => render_op("||"),
+
+            BinaryOp::Set => render_op("="),
+            BinaryOp::SetAdd => render_op("+="),
+            BinaryOp::SetSub => render_op("-="),
+            BinaryOp::SetMul => render_op("*="),
+            BinaryOp::SetDiv => render_op("/="),
         }
         .into()
     }
@@ -219,12 +221,12 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         }
     }
 
-    fn visit_literal(&mut self, value: &Token, _: &Self::Type) -> CSourceCode {
-        match value.token_type() {
-            TokenType::Bool(value) => value.to_string(),
-            TokenType::Number(value) => value.to_string(),
-            TokenType::String(content) => format!("\"{}\"", content),
-            _ => todo!(),
+    fn visit_literal(&mut self, value: &ExprOrigin<Literal>, _: &Self::Type) -> CSourceCode {
+        match value.kind() {
+            Literal::Bool(value) => value.to_string(),
+            Literal::Int(value) => value.to_string(),
+            Literal::Float(value) => value.to_string(),
+            Literal::String(content) => format!("\"{}\"", content),
         }
         .into()
     }

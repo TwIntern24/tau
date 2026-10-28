@@ -5,6 +5,7 @@ use crate::{
         expression::ExprKind,
         identifier::Identifier,
         statement::StmtKind,
+        origin::ExprOrigin,
     },
     error::{Error, Result, diagnostic, error},
     lexer::{Source, Token, TokenType},
@@ -461,7 +462,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
      */
     fn expr_lhs(&mut self, next: Token) -> Result<UntypedExpr> {
         match next.token_type() {
-            TokenType::Bool(_) | TokenType::Number(_) | TokenType::String(_) => {
+            TokenType::Bool(_) | TokenType::Int(_) | TokenType::Float(_) | TokenType::String(_) => {
                 self.expr_literal(next)
             }
             TokenType::Identifier(_) => self.expr_identifier(next),
@@ -484,7 +485,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let source = op.source().merge(&rhs.source());
         Ok(UntypedExpr::new(
             ExprKind::Unary {
-                operator: op,
+                operator: ExprOrigin::try_from(op)?,
                 right: Box::new(rhs),
             },
             source,
@@ -515,7 +516,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             Ok(UntypedExpr::new(
                 ExprKind::Binary {
                     left: Box::new(lhs),
-                    operator: next,
+                    operator: ExprOrigin::try_from(next)?,
                     right: Box::new(rhs),
                 },
                 source,
@@ -690,7 +691,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
     fn expr_literal(&mut self, next: Token) -> Result<UntypedExpr> {
         let source = next.source().clone();
-        Ok(UntypedExpr::new(ExprKind::Literal(next), source))
+        Ok(UntypedExpr::new(ExprKind::Literal(ExprOrigin::try_from(next)?), source))
     }
 
     fn expr_self(&mut self, next: Token) -> Result<UntypedExpr> {
@@ -717,7 +718,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             TokenType::Set
             | TokenType::SetAdd
             | TokenType::SetSub
-            | TokenType::SetStar
+            | TokenType::SetMul
             | TokenType::SetDiv => Some((1, 2)),
             TokenType::And | TokenType::Or | TokenType::Vbar => Some((3, 4)),
             TokenType::Low

@@ -2,8 +2,9 @@ use crate::{
     ast::{
         Location, Typed, TypedExpr, UntypedExpr, UntypedStmt, identifier::Identifier,
         statement::Stmt,
+        origin::{ExprOrigin, UnaryOp, BinaryOp, Literal},
     },
-    lexer::{Source, Token},
+    lexer::Source,
 };
 use std::boxed::Box;
 
@@ -54,13 +55,13 @@ impl<T> Location for Expr<T> {
 pub enum ExprKind<T> {
     Unary {
         // -right
-        operator: Token,
+        operator: ExprOrigin<UnaryOp>,
         right: Box<Expr<T>>,
     },
     Binary {
         // left + right
         left: Box<Expr<T>>,
-        operator: Token,
+        operator: ExprOrigin<BinaryOp>,
         right: Box<Expr<T>>,
     },
     Get {
@@ -92,7 +93,7 @@ pub enum ExprKind<T> {
         if_branch: Box<Stmt<T>>,
         else_branch: Option<Box<Stmt<T>>>,
     },
-    Literal(Token),
+    Literal(ExprOrigin<Literal>),
     Variable {
         name: Identifier,
     },
@@ -126,12 +127,12 @@ pub trait UntypedExprVisitor<'a> {
         }
     }
 
-    fn visit_unary(&mut self, operator: &'a Token, right: &'a Box<UntypedExpr>) -> Self::Output;
+    fn visit_unary(&mut self, operator: &'a ExprOrigin<UnaryOp>, right: &'a Box<UntypedExpr>) -> Self::Output;
 
     fn visit_binary(
         &mut self,
         left: &'a Box<UntypedExpr>,
-        operator: &'a Token,
+        operator: &'a ExprOrigin<BinaryOp>,
         right: &'a Box<UntypedExpr>,
     ) -> Self::Output;
 
@@ -169,7 +170,7 @@ pub trait UntypedExprVisitor<'a> {
         else_branch: &'a Option<Box<UntypedStmt>>,
     ) -> Self::Output;
 
-    fn visit_literal(&mut self, value: &'a Token) -> Self::Output;
+    fn visit_literal(&mut self, value: &'a ExprOrigin<Literal>) -> Self::Output;
 
     fn visit_variable(&mut self, name: &'a Identifier) -> Self::Output;
 }
@@ -209,7 +210,7 @@ pub trait TypedExprVisitor<'a> {
 
     fn visit_unary(
         &mut self,
-        operator: &'a Token,
+        operator: &'a ExprOrigin<UnaryOp>,
         right: &'a Box<Expr<Self::Type>>,
         type_: &'a Self::Type,
     ) -> Self::Output;
@@ -217,7 +218,7 @@ pub trait TypedExprVisitor<'a> {
     fn visit_binary(
         &mut self,
         left: &'a Box<Expr<Self::Type>>,
-        operator: &'a Token,
+        operator: &'a ExprOrigin<BinaryOp>,
         right: &'a Box<Expr<Self::Type>>,
         type_: &'a Self::Type,
     ) -> Self::Output;
@@ -266,7 +267,7 @@ pub trait TypedExprVisitor<'a> {
         type_: &'a Self::Type,
     ) -> Self::Output;
 
-    fn visit_literal(&mut self, value: &'a Token, type_: &'a Self::Type) -> Self::Output;
+    fn visit_literal(&mut self, value: &'a ExprOrigin<Literal>, type_: &'a Self::Type) -> Self::Output;
 
     fn visit_variable(&mut self, name: &'a Identifier, type_: &'a Self::Type) -> Self::Output;
 }
@@ -307,7 +308,7 @@ pub trait ExprFolder {
 
     fn fold_unary(
         &mut self,
-        operator: Token,
+        operator: ExprOrigin<UnaryOp>,
         right: Box<Expr<Self::Type>>,
         source: Source,
         type_: Self::Type,
@@ -316,7 +317,7 @@ pub trait ExprFolder {
     fn fold_binary(
         &mut self,
         left: Box<Expr<Self::Type>>,
-        operator: Token,
+        operator: ExprOrigin<BinaryOp>,
         right: Box<Expr<Self::Type>>,
         source: Source,
         type_: Self::Type,
@@ -373,7 +374,7 @@ pub trait ExprFolder {
         type_: Self::Type,
     ) -> Self::Output;
 
-    fn fold_literal(&mut self, value: Token, source: Source, type_: Self::Type) -> Self::Output;
+    fn fold_literal(&mut self, value: ExprOrigin<Literal>, source: Source, type_: Self::Type) -> Self::Output;
 
     fn fold_variable(
         &mut self,

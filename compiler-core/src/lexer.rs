@@ -139,7 +139,7 @@ impl<'a> Lexer<'a> {
                 } else {
                     return error(diagnostic(
                         format!("unexpected character '{}'", c),
-                        &self.make_source(),
+                        self.make_source(),
                     ));
                 }
             }
@@ -201,13 +201,13 @@ impl<'a> Lexer<'a> {
             } else if next == '.' {
                 return error(diagnostic(
                     "found a second dot in the float",
-                    &self.make_source(),
+                    self.make_source(),
                 ));
             } else {
                 break;
             }
         }
-        
+
         Ok(TokenType::Float(self.view().parse().unwrap()))
     }
 

@@ -1,4 +1,7 @@
-use crate::{ast::Location, lexer::{Source, TokenType}};
+use crate::{
+    ast::Location,
+    lexer::{Source, TokenType},
+};
 use std::fmt::{self, Debug};
 
 #[derive(Debug)]
@@ -44,7 +47,7 @@ pub enum UnaryOp {
     Ref,
 
     // *a -> a
-    Deref
+    Deref,
 }
 
 #[derive(Debug)]
@@ -52,7 +55,7 @@ pub enum Literal {
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(String)
+    String(String),
 }
 
 pub struct ExprOrigin<O> {
@@ -71,14 +74,20 @@ impl<O> ExprOrigin<O> {
 }
 
 impl<O> Location for ExprOrigin<O> {
-    fn source(&self) -> &Source {
-        &self.source
+    fn source(&self) -> Source {
+        self.source
     }
 }
 
 impl<O> Debug for ExprOrigin<O>
-where O: Debug {
+where
+    O: Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ExprOrigin {{ kind: {:?}, source: {:?} }}", self.kind, self.source)
+        write!(
+            f,
+            "ExprOrigin {{ kind: {:?}, source: {:?} }}",
+            self.kind, self.source
+        )
     }
 }

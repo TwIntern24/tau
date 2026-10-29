@@ -6,13 +6,13 @@ use tau_core::{
         declaration::{DeclFunc, DeclStruct, DeclVisitor},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
+        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
         statement::{Stmt, StmtKind, StmtVisitor},
-        origin::{Literal, BinaryOp, UnaryOp, ExprOrigin},
     },
     error,
     generator::Generator,
     lexer::Source,
-    type_::Typed
+    type_::Typed,
 };
 
 pub struct CCodeGenerator {
@@ -130,6 +130,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         &mut self,
         object: &'a Box<Expr<Self::Type>>,
         index: &'a Box<Expr<Self::Type>>,
+        _: &'a Source,
         _: &Self::Type,
     ) -> CSourceCode {
         let object = self.visit_expr(object);
@@ -141,6 +142,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         &mut self,
         callee: &'a Box<Expr<Self::Type>>,
         arguments: &'a [Expr<Self::Type>],
+        _: &'a Source,
         _: &Self::Type,
     ) -> CSourceCode {
         let callee = self.visit_expr(callee);
@@ -154,24 +156,19 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_create_array(
         &mut self,
-        _: &Identifier,
-        size: &Option<Box<Expr<Self::Type>>>,
         fields: &'a [Expr<Self::Type>],
+        _: &'a Source,
         type_: &Self::Type,
     ) -> CSourceCode {
-        let type_ = CSourceCode::from(type_);
-        let size = size
-            .as_ref()
-            .map(|expr| self.visit_expr(expr.as_ref()))
-            .unwrap_or_default();
         let fields = visit_vec(fields, |x| format!("{}", self.visit_expr(x)), ", ");
-        format!("{type_}[{size}]{{{fields}}}").into()
+        let type_ = CSourceCode::from(type_);
+        format!("{type_}{{{fields}}}").into()
     }
 
     fn visit_create_struct(
         &mut self,
-        _: &Identifier,
         fields: &'a [(Identifier, Expr<Self::Type>)],
+        _: &'a Source,
         type_: &Self::Type,
     ) -> CSourceCode {
         let type_: CSourceCode = type_.as_ref().into();
@@ -194,6 +191,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         condition: &'a Box<Expr<Self::Type>>,
         if_branch: &'a Box<Stmt<Self::Type>>,
         else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        _: &'a Source,
         type_: &Self::Type,
     ) -> CSourceCode {
         let condition = self.visit_expr(condition);
@@ -310,15 +308,15 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
     type Type = Typed;
     type Output = Option<CSourceCode>;
 
-    fn visit_import(&mut self, _: &[Identifier], _: &Source) -> Self::Output {
+    fn visit_import(&mut self, _: &[Identifier], _: Source) -> Self::Output {
         None
     }
 
-    fn visit_struct(&mut self, _: &DeclStruct, _: &Source) -> Self::Output {
+    fn visit_struct(&mut self, _: &DeclStruct, _: Source) -> Self::Output {
         None
     }
 
-    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: &Source) -> Self::Output {
+    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: Source) -> Self::Output {
         if function.modifiers.is_extern {
             return None;
         }
@@ -342,7 +340,7 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
         name: &Identifier,
         type_: &Typed,
         initializer: &Expr<Self::Type>,
-        _: &Source,
+        _: Source,
     ) -> Self::Output {
         let name = CSourceCode::from(name);
         let var_type = CSourceCode::from(type_.as_ref());

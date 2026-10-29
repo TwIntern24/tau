@@ -1,7 +1,15 @@
-use crate::{ast::{origin::{BinaryOp, UnaryOp, Literal, ExprOrigin}, identifier::Identifier}, lexer::source::Source, error::{self, diagnostic, Result}};
-use symbol_table::{GlobalSymbol, static_symbol};
+use crate::{
+    ast::{
+        Location,
+        identifier::Identifier,
+        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+    },
+    error::{self, Result, diagnostic},
+    lexer::source::Source,
+};
 use codespan_reporting::diagnostic::Diagnostic;
 use std::fmt::Debug;
+use symbol_table::{GlobalSymbol, static_symbol};
 
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -106,11 +114,15 @@ impl TryFrom<TokenType> for BinaryOp {
             TokenType::Leq => BinaryOp::Leq,
             TokenType::Gre => BinaryOp::Gre,
             TokenType::Geq => BinaryOp::Geq,
-            
+
             TokenType::And => BinaryOp::And,
             TokenType::Or => BinaryOp::Or,
 
-            _ => return error::error(Diagnostic::error().with_message("token is not a binary operator")),
+            _ => {
+                return error::error(
+                    Diagnostic::error().with_message("token is not a binary operator"),
+                );
+            }
         })
     }
 }
@@ -125,7 +137,11 @@ impl TryFrom<TokenType> for UnaryOp {
             TokenType::Ref => Self::Ref,
             TokenType::Star => Self::Deref,
 
-            _ => return error::error(Diagnostic::error().with_message("token is not a binary operator")),
+            _ => {
+                return error::error(
+                    Diagnostic::error().with_message("token is not a binary operator"),
+                );
+            }
         })
     }
 }
@@ -140,7 +156,11 @@ impl TryFrom<TokenType> for Literal {
             TokenType::Float(value) => Self::Float(value),
             TokenType::String(value) => Self::String(value),
 
-            _ => return error::error(Diagnostic::error().with_message("token is not a binary operator")),
+            _ => {
+                return error::error(
+                    Diagnostic::error().with_message("token is not a binary operator"),
+                );
+            }
         })
     }
 }
@@ -159,9 +179,11 @@ impl Token {
     pub fn token_type(&self) -> &TokenType {
         &self.token_type
     }
+}
 
-    pub fn source(&self) -> &Source {
-        &self.source
+impl Location for Token {
+    fn source(&self) -> Source {
+        self.source
     }
 }
 
@@ -180,7 +202,7 @@ impl From<Token> for Source {
 impl<O> TryFrom<Token> for ExprOrigin<O>
 where
     O: TryFrom<TokenType> + Debug,
-    error::Error: From<<O as TryFrom<TokenType>>::Error>
+    error::Error: From<<O as TryFrom<TokenType>>::Error>,
 {
     type Error = error::Error;
 

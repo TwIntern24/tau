@@ -9,7 +9,7 @@ use tau_core::{
     error,
     generator::Generator,
     lexer::Source,
-    type_::Typed
+    type_::Typed,
 };
 
 pub struct CHeaderGenerator;
@@ -40,11 +40,10 @@ impl<'a> Generator<'a> for CHeaderGenerator {
 }
 
 impl DeclVisitor<'_> for CHeaderGenerator {
-    // TODO: switch to typed
     type Type = Typed;
     type Output = CSourceCode;
 
-    fn visit_import(&mut self, path: &[Identifier], _: &Source) -> CSourceCode {
+    fn visit_import(&mut self, path: &[Identifier], _: Source) -> CSourceCode {
         let path = path
             .iter()
             .map(|x| format!("{x}"))
@@ -53,7 +52,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         CSourceCode::from(format!("#include <{path}.hpp>"))
     }
 
-    fn visit_struct(&mut self, structure: &DeclStruct, _: &Source) -> CSourceCode {
+    fn visit_struct(&mut self, structure: &DeclStruct, _: Source) -> CSourceCode {
         let name = CSourceCode::from(&structure.name);
         let fields = structure
             .fields
@@ -71,7 +70,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         format!("typedef struct {name} {{\n{fields}\n}} {name};").into()
     }
 
-    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: &Source) -> CSourceCode {
+    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: Source) -> CSourceCode {
         let name = CSourceCode::from(&function.name);
         let extern_ = if function.modifiers.is_extern {
             "extern "
@@ -92,7 +91,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         name: &Identifier,
         type_: &Typed,
         _: &Expr<Self::Type>,
-        _: &Source,
+        _: Source,
     ) -> CSourceCode {
         let name = CSourceCode::from(name);
         let type_ = CSourceCode::from(type_);

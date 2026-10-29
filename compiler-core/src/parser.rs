@@ -4,12 +4,13 @@ use crate::{
         declaration::{DeclFunc, DeclKind, DeclStruct, FuncModifiers},
         expression::ExprKind,
         identifier::Identifier,
-        statement::StmtKind,
         origin::ExprOrigin,
+        prelude::*,
+        statement::StmtKind,
     },
     error::{Error, Result, diagnostic, error},
     lexer::{Source, Token, TokenType},
-    type_::Type,
+    type_::{Type, Untyped, prelude::*},
 };
 use std::{boxed::Box, iter::Iterator, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
@@ -82,7 +83,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         let end = self.consume(&TokenType::Semicolon)?;
-        let source = start.source().merge(end.source());
+        let source = start.merge(&end);
         Ok(UntypedDecl::new(
             DeclKind::Const {
                 name,
@@ -162,7 +163,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             self.decl_body()?
         };
 
-        let source = start.source().merge(end.source());
+        let source = start.merge(&end);
         Ok(UntypedDecl::new(
             DeclKind::Func(DeclFunc {
                 name: Identifier::from(name),
@@ -210,7 +211,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             }
         }
         let end = self.consume(&TokenType::Semicolon)?;
-        let source = start.source().merge(end.source());
+        let source = start.merge(&end);
         Ok(UntypedDecl::new(DeclKind::Import(path), source))
     }
 
@@ -231,7 +232,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
 
         let end = self.consume(&TokenType::BraceRight)?;
-        let source = start.source().merge(end.source());
+        let source = start.merge(&end);
         Ok(UntypedDecl::new(
             DeclKind::Struct(DeclStruct {
                 name: Identifier::from(name),
@@ -299,7 +300,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 let start = self.advance()?;
                 let expr = self.expr()?;
                 let end = self.consume(&TokenType::Semicolon)?;
-                let source = start.source().merge(&end.source());
+                let source = start.merge(&end);
                 Ok(UntypedStmt::new(StmtKind::Return { value: expr }, source))
             }
             TokenType::Break => {
@@ -327,7 +328,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             statements.push(self.stmt()?);
         }
         let end = self.consume(&TokenType::BraceRight)?;
-        let source = start.source().merge(&end.source());
+        let source = start.merge(&end);
         Ok(UntypedStmt::new(StmtKind::Block { statements }, source))
     }
 
@@ -358,7 +359,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             (self.advance()?, self.advance()?)
         };
         if !name.token_type().is_identifier() {
-            return error(diagnostic("expected a variable identifier", name.source()));
+            return error(diagnostic("expected a variable identifier", &name));
         }
         let declared = if *self.peek()?.token_type() != TokenType::Set {
             self.consume(&TokenType::Colon)?;
@@ -369,7 +370,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.consume(&TokenType::Set)?;
         let initializer = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
-        let source = start.source().merge(&initializer.source());
+        let source = start.merge(&initializer);
         Ok(UntypedStmt::new(
             StmtKind::Let {
                 name: Identifier::from(name),
@@ -381,37 +382,32 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     }
 
     fn stmt_for(&mut self) -> Result<UntypedStmt> {
-        let current = self.advance()?;
+        let start = self.advance()?;
         let initializer = self.stmt()?;
         self.consume(&TokenType::Semicolon)?;
         let condition = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
         let body = self.stmt_block()?;
-        let source = increment.source().clone();
-        let increment = UntypedStmt::new(StmtKind::ExprStmt(increment), source);
-        let source = body.source().clone();
-        let body = Box::new(UntypedStmt::new(
-            StmtKind::Block {
-                statements: vec![body, increment],
-            },
-            source,
-        ));
-        let source = Source::merge(&current.source(), &body.source());
-        let statements = vec![
-            initializer,
-            UntypedStmt::new(StmtKind::While { condition, body }, source.clone()),
-        ];
-        Ok(UntypedStmt::new(StmtKind::Block { statements }, source))
+        let source = increment.source();
+        let increment = expr_stmt(increment, source);
+        let source = body.source();
+        let body = block(vec![body, increment], source);
+        let source = start.merge(&body);
+        let statements = vec![initializer, while_(condition, body, source)];
+        Ok(block(statements, source))
     }
 
     fn stmt_while(&mut self) -> Result<UntypedStmt> {
-        let current = self.advance()?;
+        let start = self.advance()?;
         let condition = self.expr()?;
-        let body = Box::new(self.stmt_block()?);
-        let source = current.source().merge(&body.source());
+        let body = self.stmt_block()?;
+        let source = start.merge(&body);
         Ok(UntypedStmt::new(
-            StmtKind::While { condition, body },
+            StmtKind::While {
+                condition,
+                body: Box::new(body),
+            },
             source,
         ))
     }
@@ -420,6 +416,9 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.expr_bp(0)
     }
 
+    /// Parses the next expression starting with the given minimum binding
+    /// power. The binding power is required for the pratt parsing algorithm
+    /// that we use.
     fn expr_bp(&mut self, min_bp: u8) -> Result<UntypedExpr> {
         let next = self.advance()?;
         let mut lhs = self.expr_lhs(next)?;
@@ -434,7 +433,10 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 let next = self.advance()?;
                 match next.token_type() {
                     TokenType::BracketLeft => {
-                        lhs = self.expr_index(lhs)?;
+                        lhs = self.expr_index_array(lhs)?;
+                    }
+                    TokenType::Dot => {
+                        lhs = self.expr_access_struct(lhs)?;
                     }
                     TokenType::ParenLeft => {
                         lhs = self.expr_call(lhs)?;
@@ -457,9 +459,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         Ok(lhs)
     }
 
-    /**
-     * Parses the left hand side of a expression.
-     */
+    /// Parses the left hand side of a expression.
     fn expr_lhs(&mut self, next: Token) -> Result<UntypedExpr> {
         match next.token_type() {
             TokenType::Bool(_) | TokenType::Int(_) | TokenType::Float(_) | TokenType::String(_) => {
@@ -471,105 +471,89 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.expr_unary(next)
             }
             TokenType::ParenLeft => self.expr_grouping(),
-            TokenType::If => self.expr_if(),
+            TokenType::If => self.expr_if(next),
             x => error(diagnostic(
                 format!("found {:?} expected expression", x),
-                next.source(),
+                &next,
             ))?,
         }
     }
 
+    /// Parses an unary expression.
+    ///
+    /// ```txt
+    /// unary_op expr
+    /// ```
     fn expr_unary(&mut self, op: Token) -> Result<UntypedExpr> {
         let r_bp = Parser::<I>::prefix_binding_power(op.token_type());
-        let rhs = self.expr_bp(r_bp)?;
-        let source = op.source().merge(&rhs.source());
-        Ok(UntypedExpr::new(
-            ExprKind::Unary {
-                operator: ExprOrigin::try_from(op)?,
-                right: Box::new(rhs),
-            },
-            source,
-        ))
+        let expr = self.expr_bp(r_bp)?;
+        let unary_op = ExprOrigin::try_from(op)?;
+        Ok(unary(unary_op, expr, ()))
     }
 
-    fn expr_binary(&mut self, lhs: UntypedExpr, bp: u8) -> Result<UntypedExpr> {
-        let next = self.advance()?;
-        if *next.token_type() == TokenType::Dot {
-            let rhs = self.advance()?;
-            if !rhs.token_type().is_identifier() {
-                return error(diagnostic(
-                    "expected an identidier on the RHS",
-                    rhs.source(),
-                ));
-            }
-            let source = lhs.source().merge(&rhs.source());
-            Ok(UntypedExpr::new(
-                ExprKind::Get {
-                    left: Box::new(lhs),
-                    right: Identifier::from(rhs),
-                },
-                source,
-            ))
-        } else {
-            let rhs = self.expr_bp(bp)?;
-            let source = lhs.source().merge(&rhs.source());
-            Ok(UntypedExpr::new(
-                ExprKind::Binary {
-                    left: Box::new(lhs),
-                    operator: ExprOrigin::try_from(next)?,
-                    right: Box::new(rhs),
-                },
-                source,
-            ))
-        }
+    /// Parses a binary expression.
+    ///
+    /// ```txt
+    /// expr binary_op expr
+    /// ```
+    fn expr_binary(&mut self, left: UntypedExpr, bp: u8) -> Result<UntypedExpr> {
+        let operator = self.advance()?;
+        let right = self.expr_bp(bp)?;
+        let operator = ExprOrigin::try_from(operator)?;
+        Ok(binary(left, operator, right, ()))
     }
 
-    fn expr_call(&mut self, lhs: UntypedExpr) -> Result<UntypedExpr> {
+    /// Parses an function call. The callee is the lambda expression, function
+    /// or associated method that gets called.
+    ///
+    /// ```txt
+    /// callee "(" (expr ("," expr)*)? ")"
+    /// ```
+    fn expr_call(&mut self, callee: UntypedExpr) -> Result<UntypedExpr> {
         let mut arguments = Vec::new();
         while *self.peek()?.token_type() != TokenType::ParenRight {
             arguments.push(self.expr()?);
-            if *self.peek()?.token_type() == TokenType::Comma {
+            if *self.peek()?.token_type() != TokenType::ParenRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
-        let rhs = self.consume(&TokenType::ParenRight)?;
-        let source = lhs.source().merge(&rhs.source());
-        Ok(UntypedExpr::new(
-            ExprKind::Call {
-                callee: Box::new(lhs),
-                arguments,
-            },
-            source,
-        ))
+        let end = self.consume(&TokenType::ParenRight)?;
+        let source = callee.merge(&end);
+        Ok(call(callee, arguments, source, ()))
     }
 
-    fn expr_create_or_index(&mut self, next: Token) -> Result<UntypedExpr> {
-        self.advance()?;
-        if *self.peek()?.token_type() == TokenType::BracketRight {
-            // No index was given, only a array creation is possible
-            self.advance()?;
-            self.expr_create_array(next, None)
-        } else {
-            // A index was given, can be a sized array or array index
-            let expr = Box::new(self.expr()?);
-            let end = self.consume(&TokenType::BracketRight)?;
-            if *self.peek()?.token_type() == TokenType::BraceLeft {
-                self.expr_create_array(next, Some(expr))
-            } else {
-                let kind = ExprKind::Index {
-                    object: Box::new(UntypedExpr::new(
-                        ExprKind::Variable {
-                            name: Identifier::from(next),
-                        },
-                        end.source().clone(),
-                    )),
-                    index: expr,
-                };
-                Ok(UntypedExpr::new(kind, end.source().clone()))
-            }
+    /// Parses an index array operation.
+    ///
+    /// ```txt
+    /// object "[" index "]"
+    /// ```
+    fn expr_index_array(&mut self, object: UntypedExpr) -> Result<UntypedExpr> {
+        let index = self.expr()?;
+        let end = self.consume(&TokenType::BracketRight)?;
+        let source = object.merge(&end);
+
+        Ok(index_array(object, index, source, ()))
+    }
+
+    /// Parses an struct access operation.
+    ///
+    /// ```txt
+    /// left "." right
+    /// ```
+    fn expr_access_struct(&mut self, left: UntypedExpr) -> Result<UntypedExpr> {
+        let right = self.advance()?;
+        if !right.token_type().is_identifier() {
+            return error(diagnostic("expected an identidier on the RHS", &right));
         }
+        let right = Identifier::from(right);
+        Ok(access_struct(left, right, ()))
     }
 
+    /// Parses an array creation.
+    ///
+    /// ```txt
+    /// "[" type ";" expr* "]"
+    /// ```
     fn expr_create_array(
         &mut self,
         name: Token,
@@ -585,28 +569,14 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
         let end = self.consume(&TokenType::BraceRight)?;
 
-        let source = name.source().merge(&end.source());
-        Ok(UntypedExpr::new(
-            ExprKind::CreateArray {
-                name: name.into(),
-                size,
-                fields,
-            },
+        let source = name.merge(&end);
+        let name = Identifier::from(name);
+        Ok(UntypedExpr::new(ExprKind::CreateArray {
+            // TODO: Array types don't need to be natives.
+            type_: array(named(name.into(), vec![]), fields.len()),
+            fields,
             source,
-        ))
-    }
-
-    fn expr_index(&mut self, lhs: UntypedExpr) -> Result<UntypedExpr> {
-        let rhs = self.expr()?;
-        self.consume(&TokenType::BracketRight)?;
-        let source = lhs.source().merge(&rhs.source());
-        Ok(UntypedExpr::new(
-            ExprKind::Index {
-                object: Box::new(lhs),
-                index: Box::new(rhs),
-            },
-            source,
-        ))
+        }))
     }
 
     fn expr_create_struct(&mut self, struct_name: Token) -> Result<UntypedExpr> {
@@ -617,7 +587,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             if !name.token_type().is_identifier() {
                 return error(diagnostic(
                     "expected field name identifier for the struct",
-                    name.source(),
+                    &name,
                 ));
             }
             self.consume(&TokenType::Set)?;
@@ -629,13 +599,14 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             }
         }
         self.consume(&TokenType::BraceRight)?;
-        let source = Source::merge(&struct_name.source(), &current.source());
-        Ok(UntypedExpr::new(
-            ExprKind::CreateStruct {
-                name: struct_name.into(),
-                fields,
-            },
+        let source = struct_name.merge(&current);
+
+        // TODO: parse more complex names and generics
+        let identifier = Identifier::from(struct_name);
+        Ok(create_struct(
+            fields,
             source,
+            named(identifier.into(), vec![]),
         ))
     }
 
@@ -650,58 +621,39 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     fn expr_identifier(&mut self, next: Token) -> Result<UntypedExpr> {
         match *self.peek()?.token_type() {
             TokenType::BraceLeft => self.expr_create_struct(next),
-            TokenType::BracketLeft => self.expr_create_or_index(next),
             _ => {
-                let source = next.source().clone();
-                Ok(UntypedExpr::new(
-                    ExprKind::Variable {
-                        name: Identifier::from(next),
-                    },
-                    source,
-                ))
+                let name = Identifier::from(next);
+                Ok(variable(name, ()))
             }
         }
     }
 
-    fn expr_if(&mut self) -> Result<UntypedExpr> {
-        let condition = Box::new(self.expr()?);
+    fn expr_if(&mut self, start: Token) -> Result<UntypedExpr> {
+        let condition = self.expr()?;
         self.consume(&TokenType::BraceLeft)?;
-        let if_branch = Box::new(self.stmt()?);
-        let brace = self.consume(&TokenType::BraceRight)?;
+        let if_branch = self.stmt()?;
+        let end = self.consume(&TokenType::BraceRight)?;
         let (else_branch, source) = if *self.peek()?.token_type() == TokenType::Else {
             self.consume(&TokenType::Else)?;
             self.consume(&TokenType::BraceLeft)?;
             let else_branch = self.stmt()?;
-            let brace = self.consume(&TokenType::BraceRight)?;
-            let source = Source::merge(&condition.source(), &brace.source());
-            (Some(Box::new(else_branch)), source)
+            let end = self.consume(&TokenType::BraceRight)?;
+            let source = start.merge(&end);
+            (Some(else_branch), source)
         } else {
-            let source = Source::merge(&condition.source(), &brace.source());
+            let source = start.merge(&end);
             (None, source)
         };
-        Ok(UntypedExpr::new(
-            ExprKind::If {
-                condition,
-                if_branch,
-                else_branch,
-            },
-            source,
-        ))
+        Ok(if_(condition, if_branch, else_branch, source, ()))
     }
 
     fn expr_literal(&mut self, next: Token) -> Result<UntypedExpr> {
-        let source = next.source().clone();
-        Ok(UntypedExpr::new(ExprKind::Literal(ExprOrigin::try_from(next)?), source))
+        Ok(literal(ExprOrigin::try_from(next)?, ()))
     }
 
     fn expr_self(&mut self, next: Token) -> Result<UntypedExpr> {
-        let source = next.source().clone();
-        Ok(UntypedExpr::new(
-            ExprKind::Variable {
-                name: Identifier::from(next),
-            },
-            source,
-        ))
+        let name = Identifier::from(next);
+        Ok(variable(name, ()))
     }
 
     fn prefix_binding_power(operator: &TokenType) -> u8 {
@@ -753,9 +705,9 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 format!(
                     "expected {:?} but found {:?}",
                     expected.clone(),
-                    next.token_type().clone()
+                    next.token_type()
                 ),
-                next.source(),
+                &next,
             ));
         }
         Ok(next)

@@ -1,4 +1,4 @@
-use crate::lexer::Source;
+use crate::{ast::Location, lexer::Source};
 use std::fmt::{Display, Formatter, Result};
 use symbol_table::GlobalSymbol;
 
@@ -18,12 +18,14 @@ impl Identifier {
         Identifier { name, source }
     }
 
-    pub fn source(&self) -> &Source {
-        &self.source
-    }
-
     pub fn name(&self) -> &str {
         &self.name.as_str()
+    }
+}
+
+impl Location for Identifier {
+    fn source(&self) -> Source {
+        self.source
     }
 }
 

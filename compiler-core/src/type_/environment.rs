@@ -1,16 +1,22 @@
-use symbol_table::GlobalSymbol;
+use crate::{
+    ast::Location,
+    lexer::Source,
+    type_::{Typed, prelude::*},
+    uid::UniqueIdGenerator,
+};
+use codespan_reporting::diagnostic::Diagnostic;
 use std::collections::HashMap;
-use crate::{ast::Location, lexer::Source, type_::{Typed, prelude::*}, uid::UniqueIdGenerator};
+use symbol_table::{GlobalSymbol, static_symbol};
 
 #[derive(Debug)]
 pub struct TypeDefinition {
     source: Source,
-    type_: Typed
+    type_: Typed,
 }
 
 impl Location for TypeDefinition {
-    fn source(&self) -> &Source {
-        &self.source
+    fn source(&self) -> Source {
+        self.source
     }
 }
 
@@ -25,7 +31,7 @@ pub struct ModuleInterface {
 #[derive(Debug)]
 pub struct Environment<'a> {
     ids: UniqueIdGenerator,
-    
+
     /// Modules that have been imported by the current module, along with the
     /// location of the import statement where they were imported.
     modules: HashMap<GlobalSymbol, &'a ModuleInterface>,
@@ -57,6 +63,4 @@ impl<'a> Environment<'a> {
     pub fn new_unbound_var(&mut self) -> Typed {
         unbound_var(self.ids.next())
     }
-
-
 }

@@ -22,8 +22,8 @@ impl<T> Stmt<T> {
 }
 
 impl<T> Location for Stmt<T> {
-    fn source(&self) -> &Source {
-        &self.source
+    fn source(&self) -> Source {
+        self.source
     }
 }
 

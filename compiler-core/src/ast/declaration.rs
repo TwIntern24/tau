@@ -53,8 +53,8 @@ impl<T> Decl<T> {
 }
 
 impl<T> Location for Decl<T> {
-    fn source(&self) -> &Source {
-        &self.source
+    fn source(&self) -> Source {
+        self.source
     }
 }
 
@@ -88,22 +88,18 @@ pub trait DeclVisitor<'a> {
         }
     }
 
-    fn visit_import(&mut self, path: &'a [Identifier], source: &'a Source) -> Self::Output;
+    fn visit_import(&mut self, path: &'a [Identifier], source: Source) -> Self::Output;
 
-    fn visit_struct(&mut self, struct_: &'a DeclStruct, source: &'a Source) -> Self::Output;
+    fn visit_struct(&mut self, struct_: &'a DeclStruct, source: Source) -> Self::Output;
 
-    fn visit_function(
-        &mut self,
-        func: &'a DeclFunc<Self::Type>,
-        source: &'a Source,
-    ) -> Self::Output;
+    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, source: Source) -> Self::Output;
 
     fn visit_const(
         &mut self,
         name: &'a Identifier,
         type_: &'a Typed,
         initializer: &'a Expr<Self::Type>,
-        source: &'a Source,
+        source: Source,
     ) -> Self::Output;
 }
 

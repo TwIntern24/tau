@@ -42,14 +42,14 @@ impl Error {
     }
 }
 
-pub fn diagnostic<'a>(message: impl Display, source: impl Into<&'a Source>) -> Diagnostic<FileId> {
+pub fn diagnostic(message: impl Display, source: impl Into<Source>) -> Diagnostic<FileId> {
     let source = source.into();
     Diagnostic::error()
         .with_message(message)
         .with_label(Label::primary(source.file_id(), source.range()))
 }
 
-pub fn label<'a>(message: impl Display, source: impl Into<&'a Source>) -> Label<FileId> {
+pub fn label(message: impl Display, source: impl Into<Source>) -> Label<FileId> {
     let source = source.into();
     Label::secondary(source.file_id(), source.range()).with_message(message)
 }

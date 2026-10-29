@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use tau_core::{
-    ast::{identifier::Identifier},
-    type_::{Type, Typed, TypeVar},
+    ast::identifier::Identifier,
+    type_::{Type, TypeVar, Typed},
 };
 
 #[derive(Default, PartialEq, Debug)]
@@ -30,6 +30,9 @@ impl From<&Type> for CSourceCode {
                 other => other,
             }),
             Type::Var { type_ } => return CSourceCode::from(&*type_.borrow()),
+            Type::Array { type_, size } => {
+                format!("{}[{}]", CSourceCode::from(type_.as_ref()), size)
+            }
             Type::Ptr { unchecked, type_ } => {
                 let type_ = CSourceCode::from(type_.as_ref());
                 let ptr = if *unchecked { '*' } else { '&' };

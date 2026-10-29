@@ -1,7 +1,7 @@
 use crate::type_::Type;
 use std::{ops::Deref, sync::Arc};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypeVar {
     /// Unbound variable of one specific type, but we don't know the type yet.
     Unbound { id: u64 },
@@ -29,9 +29,10 @@ impl TypeVar {
         match (self, other) {
             (Self::Unbound { .. }, _) => true,
             (TypeVar::Link { type_ }, other) => type_.same_as(other),
-            (Self::Generic { .. }, Type::Named { .. } | Type::Fn { .. } | Type::Ptr { .. }) => {
-                false
-            }
+            (
+                Self::Generic { .. },
+                Type::Named { .. } | Type::Fn { .. } | Type::Array { .. } | Type::Ptr { .. },
+            ) => false,
             (one @ TypeVar::Generic { .. }, Type::Var { type_ }) => {
                 one.same_as(&type_.as_ref().borrow())
             }
@@ -77,6 +78,10 @@ impl TypeVar {
 
     pub fn is_float(&self) -> bool {
         follow_link!(self, is_float)
+    }
+
+    pub fn is_number(&self) -> bool {
+        follow_link!(self, is_number)
     }
 
     pub fn is_str(&self) -> bool {

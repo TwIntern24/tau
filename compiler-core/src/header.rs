@@ -48,7 +48,7 @@ impl<'a> DeclVisitor<'a> for Header {
     type Type = ();
     type Output = Result<()>;
 
-    fn visit_import(&mut self, path: &[Identifier], _: &Source) -> Self::Output {
+    fn visit_import(&mut self, path: &[Identifier], _: Source) -> Self::Output {
         let filename = {
             let mut filename = PathBuf::new();
             for name in path {
@@ -83,7 +83,7 @@ impl<'a> DeclVisitor<'a> for Header {
         Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a DeclStruct, _: &Source) -> Self::Output {
+    fn visit_struct(&mut self, structure: &'a DeclStruct, _: Source) -> Self::Output {
         let struct_name = GlobalSymbol::from(structure.name.name());
 
         let mut fields = Vec::new();
@@ -100,7 +100,7 @@ impl<'a> DeclVisitor<'a> for Header {
         Ok(())
     }
 
-    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: &Source) -> Self::Output {
+    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: Source) -> Self::Output {
         let mut arguments = Vec::new();
         for (_, type_) in &func.params {
             arguments.push(type_.clone());
@@ -120,7 +120,7 @@ impl<'a> DeclVisitor<'a> for Header {
         name: &'a Identifier,
         type_: &'a Typed,
         _: &Expr<Self::Type>,
-        _: &Source,
+        _: Source,
     ) -> Self::Output {
         self.scope
             .insert(GlobalSymbol::from(name.name()), type_.clone());

@@ -6,9 +6,11 @@ use codespan_reporting::diagnostic::Diagnostic;
 use std::{cell::RefCell, ops::Deref, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
 
+pub mod declaration;
 pub mod environment;
 pub mod expression;
 pub mod prelude;
+pub mod statement;
 pub mod type_var;
 
 pub use crate::type_::prelude::*;

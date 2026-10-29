@@ -1,4 +1,5 @@
 use crate::{
+    analyser::SemanticAnalyser,
     ast::{
         Identifier, Location, TypedExpr, UntypedExpr,
         expression::{Expr, ExprFolder, ExprKind},
@@ -13,39 +14,7 @@ use crate::{
 use codespan_reporting::diagnostic::Diagnostic;
 use std::{boxed::Box, collections::HashMap, sync::Arc};
 
-#[derive(Debug)]
-pub(crate) struct ExprTyper<'a, 'b> {
-    environment: &'a mut Environment<'b>,
-}
-
-impl<'a, 'b> ExprTyper<'a, 'b> {
-    pub fn new(environment: &'a mut Environment<'b>) -> Self {
-        Self { environment }
-    }
-
-    pub fn new_unbound_var(&mut self) -> Arc<Type> {
-        self.environment.new_unbound_var()
-    }
-
-    pub fn infer(&mut self, expr: UntypedExpr) -> Result<TypedExpr> {
-        self.fold_expr(expr)
-    }
-
-    /// Infers the type of the given function and tries to unify it with the
-    /// given type, recording any unification error that might take place.
-    /// The typed expression is returned in any case.
-    pub fn infer_and_unify(
-        &mut self,
-        expression: UntypedExpr,
-        type_: Arc<Type>,
-    ) -> Result<TypedExpr> {
-        let expression = self.infer(expression)?;
-        unify(type_, expression.type_().clone())?;
-        Ok(expression)
-    }
-}
-
-impl<'a, 'b> ExprFolder for ExprTyper<'a, 'b> {
+impl<'a> ExprFolder for SemanticAnalyser<'a> {
     type Type = Untyped;
     type Output = Result<TypedExpr>;
 

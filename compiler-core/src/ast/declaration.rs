@@ -9,6 +9,12 @@ pub struct DeclStruct {
     pub fields: Vec<(Identifier, Typed)>,
 }
 
+impl DeclStruct {
+    pub fn new(name: Identifier, fields: Vec<(Identifier, Typed)>) -> Self {
+        Self { name, fields }
+    }
+}
+
 /// Modifiers are attributes of a element that change it's behavior. They are
 /// written before an function, structure or parameter declaration to add
 /// additional functionality to it. Currently only the extern and io modifier
@@ -18,6 +24,12 @@ pub struct DeclStruct {
 pub struct FuncModifiers {
     pub is_extern: bool,
     pub is_io: bool,
+}
+
+impl FuncModifiers {
+    pub fn new(is_extern: bool, is_io: bool) -> Self {
+        Self { is_extern, is_io }
+    }
 }
 
 /// A function takes a list of parameters, executes a list of statements and
@@ -32,6 +44,24 @@ pub struct DeclFunc<T> {
     pub params: Vec<(Identifier, Typed)>,
     pub body: Vec<Stmt<T>>,
     pub modifiers: FuncModifiers,
+}
+
+impl<T> DeclFunc<T> {
+    pub fn new(
+        name: Identifier,
+        return_type: Typed,
+        params: Vec<(Identifier, Typed)>,
+        body: Vec<Stmt<T>>,
+        modifiers: FuncModifiers,
+    ) -> Self {
+        Self {
+            name,
+            return_type,
+            params,
+            body,
+            modifiers,
+        }
+    }
 }
 
 /// A declaration (short decl) denotes a new definition of an element inside

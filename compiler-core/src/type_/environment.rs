@@ -10,8 +10,14 @@ use symbol_table::{GlobalSymbol, static_symbol};
 
 #[derive(Debug)]
 pub struct TypeDefinition {
-    source: Source,
     type_: Typed,
+    source: Source,
+}
+
+impl TypeDefinition {
+    pub fn new(type_: Typed, source: Source) -> Self {
+        Self { type_, source }
+    }
 }
 
 impl Location for TypeDefinition {
@@ -41,6 +47,14 @@ pub struct Environment<'a> {
 }
 
 impl<'a> Environment<'a> {
+    pub fn new(ids: UniqueIdGenerator, scope: Scope) -> Self {
+        Self {
+            ids,
+            modules: HashMap::new(),
+            scopes: vec![scope],
+        }
+    }
+
     pub fn begin_scope(&mut self, scope: Scope) {
         self.scopes.push(scope);
     }

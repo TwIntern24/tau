@@ -8,7 +8,12 @@ use crate::{
     error::{FileDb, Result},
     lexer::Source,
     process_file,
-    type_::{Type, prelude::Typed},
+    type_::{
+        Type,
+        environment::{Environment, Scope, TypeDefinition},
+        prelude::Typed,
+    },
+    uid::UniqueIdGenerator,
 };
 use codespan_reporting::term::{
     self,
@@ -17,30 +22,22 @@ use codespan_reporting::term::{
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 use symbol_table::GlobalSymbol;
 
-pub type TypeMap = HashMap<GlobalSymbol, Typed>;
-
 pub struct Header {
-    types: TypeMap,
-    scope: TypeMap,
+    scope: Scope,
 }
 
 impl Header {
-    pub fn new() -> Header {
-        Header {
-            types: TypeMap::new(),
-            scope: TypeMap::new(),
+    pub fn new() -> Self {
+        Self {
+            scope: Scope::new(),
         }
     }
 
-    pub fn headers(mut self, declarations: &[UntypedDecl]) -> Result<Header> {
+    pub fn env<'ctx>(mut self, declarations: &[UntypedDecl]) -> Result<Environment<'ctx>> {
         for declaration in declarations {
             self.visit_decl(declaration)?;
         }
-        Ok(self)
-    }
-
-    pub fn analysed(self) -> (TypeMap, TypeMap) {
-        (self.types, self.scope)
+        Ok(Environment::new(UniqueIdGenerator::new(), self.scope))
     }
 }
 
@@ -62,13 +59,8 @@ impl<'a> DeclVisitor<'a> for Header {
         let display = filename.display();
         let file_id = files.add(&display, &content);
         match process_file(file_id, &content) {
-            Ok((_, _, scope)) => {
+            Ok((_, env)) => {
                 // TODO: insert module
-                /*self.types.insert(
-                    path.last().expect("import path not empty").to_string(),
-                    types,
-                );*/
-                self.scope.extend(scope);
             }
             Err(error) => {
                 for diagnostic in error.diagnostics() {
@@ -83,34 +75,40 @@ impl<'a> DeclVisitor<'a> for Header {
         Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a DeclStruct, _: Source) -> Self::Output {
+    fn visit_struct(&mut self, structure: &'a DeclStruct, source: Source) -> Self::Output {
         let struct_name = GlobalSymbol::from(structure.name.name());
 
         let mut fields = Vec::new();
         for (field_name, field_type) in &structure.fields {
             fields.push((field_name.name().to_string(), field_type.clone()));
         }
-        self.types.insert(
+        self.scope.insert(
             struct_name,
-            Arc::new(Type::Named {
-                name: GlobalSymbol::from(structure.name.name()),
-                arguments: vec![],
-            }),
+            TypeDefinition::new(
+                Arc::new(Type::Named {
+                    name: GlobalSymbol::from(structure.name.name()),
+                    arguments: vec![],
+                }),
+                source,
+            ),
         );
         Ok(())
     }
 
-    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: Source) -> Self::Output {
+    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, source: Source) -> Self::Output {
         let mut arguments = Vec::new();
         for (_, type_) in &func.params {
             arguments.push(type_.clone());
         }
-        self.types.insert(
+        self.scope.insert(
             GlobalSymbol::from(func.name.name()),
-            Arc::new(Type::Fn {
-                arguments,
-                return_: func.return_type.clone(),
-            }),
+            TypeDefinition::new(
+                Arc::new(Type::Fn {
+                    arguments,
+                    return_: func.return_type.clone(),
+                }),
+                source,
+            ),
         );
         Ok(())
     }
@@ -120,10 +118,12 @@ impl<'a> DeclVisitor<'a> for Header {
         name: &'a Identifier,
         type_: &'a Typed,
         _: &Expr<Self::Type>,
-        _: Source,
+        source: Source,
     ) -> Self::Output {
-        self.scope
-            .insert(GlobalSymbol::from(name.name()), type_.clone());
+        self.scope.insert(
+            GlobalSymbol::from(name.name()),
+            TypeDefinition::new(type_.clone(), source),
+        );
         Ok(())
     }
 }

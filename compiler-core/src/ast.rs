@@ -10,6 +10,8 @@ use std::sync::Arc;
 pub mod declaration;
 pub mod expression;
 pub mod identifier;
+#[macro_use]
+pub mod macros;
 pub mod origin;
 pub mod prelude;
 pub mod statement;

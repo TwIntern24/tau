@@ -1,5 +1,6 @@
 use crate::{
     ast::{
+        declaration::{Decl, DeclFunc, DeclKind, DeclStruct},
         expression::{Expr, ExprKind},
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
@@ -9,6 +10,29 @@ use crate::{
     lexer::Source,
     type_::Typed,
 };
+
+pub fn import<T>(path: Vec<Identifier>, source: Source) -> Decl<T> {
+    Decl::new(DeclKind::Import(path), source)
+}
+
+pub fn struct_<T>(struct_: DeclStruct, source: Source) -> Decl<T> {
+    Decl::new(DeclKind::Struct(struct_), source)
+}
+
+pub fn func<T>(func: DeclFunc<T>, source: Source) -> Decl<T> {
+    Decl::new(DeclKind::Func(func), source)
+}
+
+pub fn const_<T>(name: Identifier, type_: Typed, initializer: Expr<T>, source: Source) -> Decl<T> {
+    Decl::new(
+        DeclKind::Const {
+            name,
+            type_,
+            initializer,
+        },
+        source,
+    )
+}
 
 pub fn block<T>(statements: Vec<Stmt<T>>, source: Source) -> Stmt<T> {
     Stmt::new(StmtKind::Block { statements }, source)

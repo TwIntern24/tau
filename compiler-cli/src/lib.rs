@@ -41,11 +41,9 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
         let display = filename.display();
         let file_id = files.add(&display, &content);
         match process_file(file_id, &content) {
-            Ok((ast, _, _)) => match args.target() {
+            Ok((ast, _env)) => match args.target() {
                 cli::Target::C => {
                     // FIXME: resolve types first
-                    Ok(())
-                    /*
                     let compiler = Compiler::new(&ast);
                     let header_output = set_output(filename.as_ref(), args.output(), "h");
                     compiler
@@ -55,7 +53,6 @@ fn compile_file(filename: &str, args: &cli::Args) -> DynResult {
                     compiler
                         .compile(CCodeGenerator::new(), &code_output)
                         .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)
-                    */
                 }
                 cli::Target::Cranelift => unimplemented!(),
             },

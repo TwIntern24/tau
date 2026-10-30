@@ -1,7 +1,4 @@
-use crate::{
-    ast::Location,
-    lexer::{Source, TokenType},
-};
+use crate::{ast::Location, lexer::Source};
 use std::fmt::{self, Debug};
 
 #[derive(Debug)]

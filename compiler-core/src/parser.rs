@@ -2,15 +2,14 @@ use crate::{
     ast::{
         Location, UntypedDecl, UntypedExpr, UntypedStmt,
         declaration::{DeclFunc, DeclKind, DeclStruct, FuncModifiers},
-        expression::ExprKind,
         identifier::Identifier,
         origin::ExprOrigin,
         prelude::*,
         statement::StmtKind,
     },
     error::{Error, Result, diagnostic, error},
-    lexer::{Source, Token, TokenType},
-    type_::{Type, Untyped, prelude::*},
+    lexer::{Token, TokenType},
+    type_::{Type, prelude::*},
 };
 use std::{boxed::Box, iter::Iterator, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
@@ -553,20 +552,20 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     /// Parses an array creation.
     ///
     /// ```txt
-    /// "[" type ";" expr* "]"
+    /// "[" type ";" expr ("," expr)* ","? "]"
     /// ```
     fn expr_create_array(&mut self, start: Token) -> Result<UntypedExpr> {
         let type_ = self.decl_type()?;
-        self.consume(&TokenType::Semicolon);
+        self.consume(&TokenType::Semicolon)?;
         let mut fields = Vec::new();
-        while *self.peek()?.token_type() != TokenType::BraceRight {
+        while *self.peek()?.token_type() != TokenType::BracketRight {
             fields.push(self.expr()?);
-            if *self.peek()?.token_type() != TokenType::BraceRight {
+            if *self.peek()?.token_type() != TokenType::BracketRight {
                 self.consume(&TokenType::Comma)?;
             }
         }
         let type_ = array(type_, fields.len());
-        let end = self.consume(&TokenType::BraceRight)?;
+        let end = self.consume(&TokenType::BracketRight)?;
 
         let source = start.merge(&end);
         Ok(create_array(fields, source, type_))

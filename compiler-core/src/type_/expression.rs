@@ -1,7 +1,7 @@
 use crate::{
     analyser::SemanticAnalyser,
     ast::{
-        Identifier, Location, TypedExpr, UntypedExpr,
+        Identifier, Location, TypedExpr,
         expression::{Expr, ExprFolder, ExprKind},
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
         prelude::*,
@@ -9,10 +9,9 @@ use crate::{
     },
     error::{Error, Result, diagnostic, error, label, primary},
     lexer::Source,
-    type_::{Type, Typed, Untyped, collapse_links, environment::Environment, prelude::*, unify},
+    type_::{Type, Typed, Untyped, collapse_links, prelude::*, unify},
 };
-use codespan_reporting::diagnostic::Diagnostic;
-use std::{boxed::Box, collections::HashMap, sync::Arc};
+use std::boxed::Box;
 
 impl ExprFolder for SemanticAnalyser {
     type Type = Untyped;
@@ -22,7 +21,7 @@ impl ExprFolder for SemanticAnalyser {
         &mut self,
         operator: ExprOrigin<UnaryOp>,
         right: Expr<Self::Type>,
-        type_: Self::Type,
+        _: Self::Type,
     ) -> Self::Output {
         let right = self.fold_expr(right)?;
         match operator.kind() {
@@ -70,7 +69,7 @@ impl ExprFolder for SemanticAnalyser {
         left: Expr<Self::Type>,
         operator: ExprOrigin<BinaryOp>,
         right: Expr<Self::Type>,
-        type_: Self::Type,
+        _: Self::Type,
     ) -> Self::Output {
         Ok(match operator.kind() {
             // (number -> number) -> number
@@ -130,7 +129,7 @@ impl ExprFolder for SemanticAnalyser {
             }
 
             // (number -> number) -> bool
-            BinaryOp::Low | BinaryOp::Leq | BinaryOp::Gre | BinaryOp::Geq | BinaryOp::SetDiv => {
+            BinaryOp::Low | BinaryOp::Leq | BinaryOp::Gre | BinaryOp::Geq => {
                 let left = self.infer(left)?;
                 let right = self.infer(right)?;
                 if !left.type_().is_number() || !right.type_().is_number() {
@@ -181,7 +180,7 @@ impl ExprFolder for SemanticAnalyser {
         &mut self,
         left: Expr<Self::Type>,
         right: Identifier,
-        type_: Self::Type,
+        _: Self::Type,
     ) -> Self::Output {
         let left = self.fold_expr(left)?;
         let object = collapse_links(left.type_().clone());
@@ -233,7 +232,7 @@ impl ExprFolder for SemanticAnalyser {
         callee: Expr<Self::Type>,
         arguments: Vec<Expr<Self::Type>>,
         source: Source,
-        type_: Self::Type,
+        _: Self::Type,
     ) -> Self::Output {
         let callee = self.infer(callee)?;
         if let Type::Fn {
@@ -275,6 +274,16 @@ impl ExprFolder for SemanticAnalyser {
                 }
                 typed_fields
             };
+            if *size < fields.len() {
+                return error(
+                    diagnostic(format!("number of elements exceeds size"), source).with_label(
+                        label(
+                            format!("expected at most {} elements, got {}", size, fields.len()),
+                            source,
+                        ),
+                    ),
+                );
+            }
             Ok(TypedExpr::new(ExprKind::CreateArray {
                 fields,
                 source,
@@ -306,7 +315,7 @@ impl ExprFolder for SemanticAnalyser {
         if_branch: Box<Stmt<Self::Type>>,
         else_branch: Option<Box<Stmt<Self::Type>>>,
         source: Source,
-        type_: Self::Type,
+        _: Self::Type,
     ) -> Self::Output {
         // Check the condition
         let condition = self.fold_expr(condition)?;
@@ -346,7 +355,7 @@ impl ExprFolder for SemanticAnalyser {
         ))
     }
 
-    fn fold_literal(&mut self, value: ExprOrigin<Literal>, type_: Self::Type) -> Self::Output {
+    fn fold_literal(&mut self, value: ExprOrigin<Literal>, _: Self::Type) -> Self::Output {
         let type_ = match value.kind() {
             Literal::Int(_) => int(),
             Literal::Float(_) => float(),
@@ -356,7 +365,7 @@ impl ExprFolder for SemanticAnalyser {
         Ok(literal(value, type_))
     }
 
-    fn fold_variable(&mut self, name: Identifier, type_: Self::Type) -> Self::Output {
+    fn fold_variable(&mut self, name: Identifier, _: Self::Type) -> Self::Output {
         let type_ = self.environment.find_var(&name)?.type_().clone();
         Ok(variable(name, type_))
     }

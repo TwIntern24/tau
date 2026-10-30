@@ -7,9 +7,9 @@ use crate::{
         prelude::*,
         statement::{Stmt, StmtFolder},
     },
-    error::{Error, Result, diagnostic, error, label, primary},
+    error::{Error, Result, label, primary},
     lexer::Source,
-    type_::{Typed, Untyped, environment::Environment, prelude::*, unify},
+    type_::{Typed, Untyped, prelude::*, unify},
 };
 
 impl StmtFolder for SemanticAnalyser {

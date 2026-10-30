@@ -233,7 +233,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek(&mut self) -> Result<char> {
-        if let Some((o, c)) = self.last {
+        if let Some((_, c)) = self.last {
             return Ok(c);
         }
         let o = self.chars.offset();

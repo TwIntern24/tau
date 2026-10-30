@@ -1,7 +1,4 @@
-use crate::{
-    error::{Error, FileId, error},
-    type_::environment::Environment,
-};
+use crate::error::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
 use std::{cell::RefCell, fmt, ops::Deref, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
@@ -372,45 +369,6 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId
 
         Type::Array { type_, .. } | Type::Ptr { type_, .. } => unify_unbound_type(type_, own_id),
     }
-}
-
-fn match_fun_type(
-    type_: Arc<Type>,
-    arity: usize,
-    environment: &mut Environment,
-) -> Result<(Vec<Arc<Type>>, Arc<Type>), Diagnostic<FileId>> {
-    if let Type::Var { type_ } = type_.deref() {
-        let new_value = match type_.borrow().deref() {
-            TypeVar::Link { type_, .. } => {
-                return match_fun_type(type_.clone(), arity, environment);
-            }
-
-            TypeVar::Unbound { .. } => {
-                let arguments: Vec<_> = (0..arity).map(|_| environment.new_unbound_var()).collect();
-                let return_ = environment.new_unbound_var();
-                Some((arguments, return_))
-            }
-
-            TypeVar::Generic { .. } => None,
-        };
-
-        if let Some((arguments, return_)) = new_value {
-            *type_.borrow_mut() = TypeVar::Link {
-                type_: fn_(arguments.clone(), return_.clone()),
-            };
-            return Ok((arguments, return_));
-        }
-    }
-
-    if let Type::Fn { arguments, return_ } = type_.deref() {
-        return if arguments.len() != arity {
-            Err(Diagnostic::error().with_message("function arity don't match"))
-        } else {
-            Ok((arguments.clone(), return_.clone()))
-        };
-    }
-
-    Err(Diagnostic::error().with_message("type is not a function"))
 }
 
 pub fn generalise(t: Arc<Type>) -> Arc<Type> {

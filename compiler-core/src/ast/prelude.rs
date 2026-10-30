@@ -6,7 +6,6 @@ use crate::{
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
         statement::{Stmt, StmtKind},
     },
-    error::Result,
     lexer::Source,
     type_::Typed,
 };

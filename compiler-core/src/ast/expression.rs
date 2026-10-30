@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        Location, Typed, TypedExpr, UntypedExpr, UntypedStmt,
+        Location, Typed, UntypedExpr, UntypedStmt,
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
         statement::Stmt,

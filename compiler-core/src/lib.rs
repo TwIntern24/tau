@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::{
     analyser::SemanticAnalyser,
     ast::TypedDecl,

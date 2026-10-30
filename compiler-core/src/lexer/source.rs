@@ -1,7 +1,6 @@
 use crate::{
     ast::{Location, identifier::Identifier},
     error::{FileId, Result, error},
-    lexer::token::Token,
 };
 use codespan_reporting::diagnostic::Diagnostic;
 use std::ops::Range;
@@ -32,7 +31,7 @@ impl Source {
     }
 
     pub fn range(&self) -> Range<usize> {
-        (self.range.0..self.range.1)
+        self.range.0..self.range.1
     }
 }
 

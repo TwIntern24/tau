@@ -62,27 +62,36 @@ fn compile_file(context: &mut Context, filename: &str, args: &cli::Args) -> DynR
 
 #[cfg(test)]
 mod tests {
-    use super::{Context, DynResult, compile_file};
+    use super::{Context, compile_file};
     use crate::cli::ArgsBuilder;
 
-    #[test]
-    fn pipeline_arrays() -> DynResult {
-        let args = ArgsBuilder::new().build();
-        let mut context = Context::new();
-        compile_file(&mut context, "../examples/arrays.tau", &args)
+    macro_rules! assert_ok {
+        ($result:expr) => {
+            assert!(matches!($result, Ok(_)))
+        };
     }
 
     #[test]
-    fn pipeline_heap() -> DynResult {
+    fn pipeline_arrays() {
         let args = ArgsBuilder::new().build();
         let mut context = Context::new();
-        compile_file(&mut context, "../examples/heap.tau", &args)
+        let result = compile_file(&mut context, "../examples/arrays.tau", &args);
+        assert_ok!(result);
     }
 
     #[test]
-    fn pipeline_vec2() -> DynResult {
+    fn pipeline_heap() {
         let args = ArgsBuilder::new().build();
         let mut context = Context::new();
-        compile_file(&mut context, "../examples/vec2.tau", &args)
+        let result = compile_file(&mut context, "../examples/heap.tau", &args);
+        assert_ok!(result);
+    }
+
+    #[test]
+    fn pipeline_vec2() {
+        let args = ArgsBuilder::new().build();
+        let mut context = Context::new();
+        let result = compile_file(&mut context, "../examples/vec2.tau", &args);
+        assert_ok!(result);
     }
 }

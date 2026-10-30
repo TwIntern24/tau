@@ -1,13 +1,12 @@
 use crate::{
     ast::{Location, identifier::Identifier},
-    error::{Error, Result, diagnostic, error},
+    error::{Error, Result, diagnostic, error, label},
     lexer::Source,
     type_::{Typed, prelude::*},
     uid::UniqueIdGenerator,
 };
-use codespan_reporting::diagnostic::Diagnostic;
 use std::{collections::HashMap, sync::Arc};
-use symbol_table::{GlobalSymbol, static_symbol};
+use symbol_table::GlobalSymbol;
 
 #[derive(Debug)]
 pub struct TypeDefinition {
@@ -59,7 +58,12 @@ impl StructInterface {
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
             .map_or_else(
                 || Ok(()),
-                |d| error(diagnostic("field already exists", name)),
+                |def| {
+                    error(
+                        diagnostic("field already exists", name)
+                            .with_label(label("variable was already declared here", &def)),
+                    )
+                },
             )
     }
 
@@ -86,6 +90,7 @@ pub struct ModuleInterface {
     name: GlobalSymbol,
 
     /// Available submodules.
+    #[allow(unused)]
     modules: HashMap<GlobalSymbol, Arc<ModuleInterface>>,
 
     /// Declared structs.
@@ -125,7 +130,12 @@ impl ModuleInterface {
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
             .map_or_else(
                 || Ok(()),
-                |d| error(diagnostic("variable already exists", name)),
+                |def| {
+                    error(
+                        diagnostic("variable already exists", name)
+                            .with_label(label("variable was already declared here", &def)),
+                    )
+                },
             )
     }
 
@@ -140,7 +150,12 @@ impl ModuleInterface {
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
             .map_or_else(
                 || Ok(()),
-                |d| error(diagnostic("variable already exists", name)),
+                |def| {
+                    error(
+                        diagnostic("variable already exists", name)
+                            .with_label(label("variable was already declared here", &def)),
+                    )
+                },
             )
     }
 
@@ -212,7 +227,12 @@ impl Environment {
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
             .map_or_else(
                 || Ok(()),
-                |d| error(diagnostic("variable already exists", name)),
+                |def| {
+                    error(
+                        diagnostic("variable already exists", name)
+                            .with_label(label("variable was already declared here", &def)),
+                    )
+                },
             )
     }
 

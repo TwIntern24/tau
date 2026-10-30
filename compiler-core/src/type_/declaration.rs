@@ -1,19 +1,16 @@
 use crate::{
     analyser::SemanticAnalyser,
     ast::{
-        Identifier, Location, TypedDecl, TypedExpr, UntypedExpr,
-        declaration::{DeclFolder, DeclFunc, DeclKind, DeclStruct},
-        expression::{Expr, ExprFolder, ExprKind},
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        Identifier, TypedDecl,
+        declaration::{DeclFolder, DeclFunc, DeclStruct},
+        expression::Expr,
         prelude::*,
-        statement::{Stmt, StmtKind},
     },
-    error::{Error, Result, diagnostic, error},
+    error::Result,
     lexer::Source,
-    type_::{Type, Typed, Untyped, collapse_links, environment::Environment, prelude::*, unify},
+    type_::{Typed, Untyped},
 };
-use codespan_reporting::diagnostic::Diagnostic;
-use std::{boxed::Box, collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 impl DeclFolder for SemanticAnalyser {
     type Type = Untyped;

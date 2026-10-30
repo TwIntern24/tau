@@ -4,7 +4,7 @@ use crate::{
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
     },
-    error::{self, FileId, diagnostic},
+    error::{self, FileId},
     lexer::source::Source,
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};

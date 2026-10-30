@@ -7,7 +7,7 @@ use codespan_reporting::term::{
     self, Config,
     termcolor::{ColorChoice, StandardStream},
 };
-use std::{collections::HashMap, path, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use symbol_table::GlobalSymbol;
 
 pub struct Context {

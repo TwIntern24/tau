@@ -5,7 +5,7 @@ use codespan_reporting::{
 };
 use std::{
     fmt::{Debug, Display},
-    path, result,
+    result,
 };
 
 pub type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;

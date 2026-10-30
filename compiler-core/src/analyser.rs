@@ -5,7 +5,7 @@ use crate::{
     },
     error::{Error, Result, label, primary},
     fold_vec,
-    type_::{Typed, Untyped, environment::Environment, unify},
+    type_::{Typed, environment::Environment, unify},
 };
 
 pub struct SemanticAnalyser {

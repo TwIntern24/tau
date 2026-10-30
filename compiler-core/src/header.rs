@@ -6,21 +6,16 @@ use crate::{
         identifier::Identifier,
     },
     context::Context,
-    error::{FileDb, Result},
+    error::Result,
     lexer::Source,
     process_file,
     type_::{
         Type,
-        environment::{Environment, ModuleInterface, Scope, StructInterface, TypeDefinition},
+        environment::{Environment, ModuleInterface, StructInterface},
         prelude::Typed,
     },
-    uid::UniqueIdGenerator,
 };
-use codespan_reporting::term::{
-    self,
-    termcolor::{ColorChoice, StandardStream},
-};
-use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub struct Header<'ctx> {
@@ -86,7 +81,7 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
         self.module.declare_struct(struct_)
     }
 
-    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, source: Source) -> Self::Output {
+    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: Source) -> Self::Output {
         let mut arguments = Vec::new();
         for (_, type_) in &func.params {
             arguments.push(type_.clone());
@@ -105,7 +100,7 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
         name: &'a Identifier,
         type_: &'a Typed,
         _: &Expr<Self::Type>,
-        source: Source,
+        _: Source,
     ) -> Self::Output {
         self.module.declare_var(name, type_.clone())
     }

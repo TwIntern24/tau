@@ -18,8 +18,8 @@ pub enum Type {
     /// A named type such as i32, f64 or a custom type such as Vec.
     /// The type can take other types as generic arguments
     Named {
-        // TODO: bring them back when we have a better implementation for imports
-        // package: GlobalSymbol,
+        // TODO: bring them back when we have a better implementation for
+        // imports package: GlobalSymbol,
         // module: GlobalSymbol,
         name: GlobalSymbol,
         /// List of all generic types, can be empty.
@@ -59,7 +59,8 @@ impl Type {
                 type_.as_ref().borrow().same_as_other_type(named)
             }
             (
-                // TODO: bring them back when we have a better implementation for imports
+                // TODO: bring them back when we have a better implementation
+                // for imports
                 Self::Named {
                     // package,
                     // module,

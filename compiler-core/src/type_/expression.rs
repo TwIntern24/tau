@@ -72,13 +72,33 @@ impl ExprFolder for SemanticAnalyser {
         _: Self::Type,
     ) -> Self::Output {
         Ok(match operator.kind() {
+            // (a -> a) -> a
+            BinaryOp::Set => {
+                let left = self.infer(left)?;
+                let right = self.infer(right)?;
+                unify(left.type_().clone(), right.type_().clone()).map_err(|d| {
+                    Error::with_diagnostic(
+                        d.with_label(primary(left.merge(&right)))
+                            .with_label(label(
+                                format!("left side has type {}", left.type_()),
+                                &left,
+                            ))
+                            .with_label(label(
+                                format!("right side has type {}", right.type_()),
+                                &right,
+                            )),
+                    )
+                })?;
+                let type_ = left.type_().clone();
+                binary(left, operator, right, type_)
+            }
+
             // (number -> number) -> number
             BinaryOp::Add
             | BinaryOp::Sub
             | BinaryOp::Mul
             | BinaryOp::Div
             | BinaryOp::Mod
-            | BinaryOp::Set
             | BinaryOp::SetAdd
             | BinaryOp::SetSub
             | BinaryOp::SetMul
@@ -86,10 +106,17 @@ impl ExprFolder for SemanticAnalyser {
                 let left = self.infer(left)?;
                 let right = self.infer(right)?;
                 if !left.type_().is_number() || !right.type_().is_number() {
-                    return error(diagnostic(
-                        "left and right side must be numbers",
-                        left.merge(&right),
-                    ));
+                    return error(
+                        diagnostic("left and right side must be numbers", left.merge(&right))
+                            .with_label(label(
+                                format!("left side has type {}", left.type_()),
+                                &left,
+                            ))
+                            .with_label(label(
+                                format!("right side has type {}", right.type_()),
+                                &right,
+                            )),
+                    );
                 }
                 unify(left.type_().clone(), right.type_().clone()).map_err(|d| {
                     Error::with_diagnostic(
@@ -133,10 +160,17 @@ impl ExprFolder for SemanticAnalyser {
                 let left = self.infer(left)?;
                 let right = self.infer(right)?;
                 if !left.type_().is_number() || !right.type_().is_number() {
-                    return error(diagnostic(
-                        "left and right side must be numbers",
-                        left.merge(&right),
-                    ));
+                    return error(
+                        diagnostic("left and right side must be numbers", left.merge(&right))
+                            .with_label(label(
+                                format!("left side has type {}", left.type_()),
+                                &left,
+                            ))
+                            .with_label(label(
+                                format!("right side has type {}", right.type_()),
+                                &right,
+                            )),
+                    );
                 }
                 unify(left.type_().clone(), right.type_().clone()).map_err(|d| {
                     Error::with_diagnostic(

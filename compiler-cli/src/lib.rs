@@ -66,9 +66,17 @@ mod tests {
     use crate::cli::ArgsBuilder;
 
     macro_rules! assert_ok {
-        ($result:expr) => {
-            assert!(matches!($result, Ok(_)))
-        };
+        ($result:expr) => {{
+            let result = &$result;
+            assert!(matches!(result, Ok(_)), "Expected Ok(_), got {:?}", result);
+        }};
+    }
+
+    macro_rules! assert_none {
+        ($result:expr) => {{
+            let result = &$result;
+            assert!(matches!(result, None), "Expected None, got {:?}", result);
+        }};
     }
 
     #[test]
@@ -77,6 +85,7 @@ mod tests {
         let mut context = Context::new();
         let result = compile_file(&mut context, "../examples/arrays.tau", &args);
         assert_ok!(result);
+        assert_none!(context.severity());
     }
 
     #[test]
@@ -85,6 +94,7 @@ mod tests {
         let mut context = Context::new();
         let result = compile_file(&mut context, "../examples/heap.tau", &args);
         assert_ok!(result);
+        assert_none!(context.severity());
     }
 
     #[test]
@@ -93,5 +103,6 @@ mod tests {
         let mut context = Context::new();
         let result = compile_file(&mut context, "../examples/vec2.tau", &args);
         assert_ok!(result);
+        assert_none!(context.severity());
     }
 }

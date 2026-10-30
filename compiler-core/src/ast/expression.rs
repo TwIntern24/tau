@@ -190,33 +190,30 @@ pub trait UntypedExprVisitor<'a> {
     fn visit_unary(
         &mut self,
         operator: &'a ExprOrigin<UnaryOp>,
-        right: &'a Box<UntypedExpr>,
+        right: &'a UntypedExpr,
     ) -> Self::Output;
 
     fn visit_binary(
         &mut self,
-        left: &'a Box<UntypedExpr>,
+        left: &'a UntypedExpr,
         operator: &'a ExprOrigin<BinaryOp>,
-        right: &'a Box<UntypedExpr>,
+        right: &'a UntypedExpr,
     ) -> Self::Output;
 
     fn visit_call(
         &mut self,
-        callee: &'a Box<UntypedExpr>,
+        callee: &'a UntypedExpr,
         arguments: &'a [UntypedExpr],
         source: &'a Source,
     ) -> Self::Output;
 
-    fn visit_access_struct(
-        &mut self,
-        left: &'a Box<UntypedExpr>,
-        right: &'a Identifier,
-    ) -> Self::Output;
+    fn visit_access_struct(&mut self, left: &'a UntypedExpr, right: &'a Identifier)
+    -> Self::Output;
 
     fn visit_index_array(
         &mut self,
-        object: &'a Box<UntypedExpr>,
-        index: &'a Box<UntypedExpr>,
+        object: &'a UntypedExpr,
+        index: &'a UntypedExpr,
         source: &'a Source,
     ) -> Self::Output;
 
@@ -231,7 +228,7 @@ pub trait UntypedExprVisitor<'a> {
 
     fn visit_if(
         &mut self,
-        condition: &'a Box<UntypedExpr>,
+        condition: &'a UntypedExpr,
         if_branch: &'a Box<UntypedStmt>,
         else_branch: &'a Option<Box<UntypedStmt>>,
         source: &'a Source,
@@ -297,36 +294,36 @@ pub trait TypedExprVisitor<'a> {
     fn visit_unary(
         &mut self,
         operator: &'a ExprOrigin<UnaryOp>,
-        right: &'a Box<Expr<Self::Type>>,
+        right: &'a Expr<Self::Type>,
         type_: &'a Self::Type,
     ) -> Self::Output;
 
     fn visit_binary(
         &mut self,
-        left: &'a Box<Expr<Self::Type>>,
+        left: &'a Expr<Self::Type>,
         operator: &'a ExprOrigin<BinaryOp>,
-        right: &'a Box<Expr<Self::Type>>,
+        right: &'a Expr<Self::Type>,
         type_: &'a Self::Type,
     ) -> Self::Output;
 
     fn visit_get(
         &mut self,
-        left: &'a Box<Expr<Self::Type>>,
+        left: &'a Expr<Self::Type>,
         right: &'a Identifier,
         type_: &'a Self::Type,
     ) -> Self::Output;
 
     fn visit_index(
         &mut self,
-        object: &'a Box<Expr<Self::Type>>,
-        index: &'a Box<Expr<Self::Type>>,
+        object: &'a Expr<Self::Type>,
+        index: &'a Expr<Self::Type>,
         source: &'a Source,
         type_: &'a Self::Type,
     ) -> Self::Output;
 
     fn visit_call(
         &mut self,
-        callee: &'a Box<Expr<Self::Type>>,
+        callee: &'a Expr<Self::Type>,
         arguments: &'a [Expr<Self::Type>],
         source: &'a Source,
         type_: &'a Self::Type,
@@ -348,7 +345,7 @@ pub trait TypedExprVisitor<'a> {
 
     fn visit_if(
         &mut self,
-        condition: &'a Box<Expr<Self::Type>>,
+        condition: &'a Expr<Self::Type>,
         if_branch: &'a Box<Stmt<Self::Type>>,
         else_branch: &'a Option<Box<Stmt<Self::Type>>>,
         source: &'a Source,
@@ -374,26 +371,26 @@ pub trait ExprFolder {
                 operator,
                 right,
                 type_,
-            } => self.fold_unary(operator, right, type_),
+            } => self.fold_unary(operator, *right, type_),
             ExprKind::Binary {
                 left,
                 operator,
                 right,
                 type_,
-            } => self.fold_binary(left, operator, right, type_),
-            ExprKind::AccessStruct { left, right, type_ } => self.fold_get(left, right, type_),
+            } => self.fold_binary(*left, operator, *right, type_),
+            ExprKind::AccessStruct { left, right, type_ } => self.fold_get(*left, right, type_),
             ExprKind::IndexArray {
                 object,
                 index,
                 source,
                 type_,
-            } => self.fold_index(object, index, source, type_),
+            } => self.fold_index(*object, *index, source, type_),
             ExprKind::Call {
                 callee,
                 arguments,
                 source,
                 type_,
-            } => self.fold_call(callee, arguments, source, type_),
+            } => self.fold_call(*callee, arguments, source, type_),
             ExprKind::CreateArray {
                 fields,
                 source,
@@ -410,7 +407,7 @@ pub trait ExprFolder {
                 else_branch,
                 source,
                 type_,
-            } => self.fold_if(condition, if_branch, else_branch, source, type_),
+            } => self.fold_if(*condition, if_branch, else_branch, source, type_),
             ExprKind::Literal { literal, type_ } => self.fold_literal(literal, type_),
             ExprKind::Variable { name, type_ } => self.fold_variable(name, type_),
         }
@@ -419,36 +416,36 @@ pub trait ExprFolder {
     fn fold_unary(
         &mut self,
         operator: ExprOrigin<UnaryOp>,
-        right: Box<Expr<Self::Type>>,
+        right: Expr<Self::Type>,
         type_: Self::Type,
     ) -> Self::Output;
 
     fn fold_binary(
         &mut self,
-        left: Box<Expr<Self::Type>>,
+        left: Expr<Self::Type>,
         operator: ExprOrigin<BinaryOp>,
-        right: Box<Expr<Self::Type>>,
+        right: Expr<Self::Type>,
         type_: Self::Type,
     ) -> Self::Output;
 
     fn fold_get(
         &mut self,
-        left: Box<Expr<Self::Type>>,
+        left: Expr<Self::Type>,
         right: Identifier,
         type_: Self::Type,
     ) -> Self::Output;
 
     fn fold_index(
         &mut self,
-        object: Box<Expr<Self::Type>>,
-        index: Box<Expr<Self::Type>>,
+        object: Expr<Self::Type>,
+        index: Expr<Self::Type>,
         source: Source,
         type_: Self::Type,
     ) -> Self::Output;
 
     fn fold_call(
         &mut self,
-        callee: Box<Expr<Self::Type>>,
+        callee: Expr<Self::Type>,
         arguments: Vec<Expr<Self::Type>>,
         source: Source,
         type_: Self::Type,
@@ -470,7 +467,7 @@ pub trait ExprFolder {
 
     fn fold_if(
         &mut self,
-        condition: Box<Expr<Self::Type>>,
+        condition: Expr<Self::Type>,
         if_branch: Box<Stmt<Self::Type>>,
         else_branch: Option<Box<Stmt<Self::Type>>>,
         source: Source,

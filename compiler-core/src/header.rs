@@ -5,12 +5,13 @@ use crate::{
         expression::Expr,
         identifier::Identifier,
     },
+    context::Context,
     error::{FileDb, Result},
     lexer::Source,
     process_file,
     type_::{
         Type,
-        environment::{Environment, Scope, TypeDefinition},
+        environment::{Environment, ModuleInterface, Scope, StructInterface, TypeDefinition},
         prelude::Typed,
     },
     uid::UniqueIdGenerator,
@@ -20,28 +21,33 @@ use codespan_reporting::term::{
     termcolor::{ColorChoice, StandardStream},
 };
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
-use symbol_table::GlobalSymbol;
+use symbol_table::{GlobalSymbol, static_symbol};
 
-pub struct Header {
-    scope: Scope,
+pub struct Header<'ctx> {
+    context: &'ctx mut Context,
+    module: ModuleInterface,
 }
 
-impl Header {
-    pub fn new() -> Self {
+impl<'ctx> Header<'ctx> {
+    pub fn new(context: &'ctx mut Context) -> Self {
         Self {
-            scope: Scope::new(),
+            context,
+            // TODO: add real module name
+            module: ModuleInterface::new(static_symbol!("")),
         }
     }
 
-    pub fn env<'ctx>(mut self, declarations: &[UntypedDecl]) -> Result<Environment<'ctx>> {
+    pub fn env(mut self, declarations: &[UntypedDecl]) -> Result<Environment> {
         for declaration in declarations {
             self.visit_decl(declaration)?;
         }
-        Ok(Environment::new(UniqueIdGenerator::new(), self.scope))
+        let module = Arc::new(self.module);
+        self.context.cache_module(module.clone());
+        Ok(Environment::new(self.context.ids().clone(), module))
     }
 }
 
-impl<'a> DeclVisitor<'a> for Header {
+impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
     type Type = ();
     type Output = Result<()>;
 
@@ -55,44 +61,29 @@ impl<'a> DeclVisitor<'a> for Header {
             filename
         };
         let content = fs::read_to_string(&filename).expect("Expected to open file");
-        let mut files = FileDb::new();
         let display = filename.display();
-        let file_id = files.add(&display, &content);
-        match process_file(file_id, &content) {
-            Ok((_, env)) => {
-                // TODO: insert module
-            }
-            Err(error) => {
-                for diagnostic in error.diagnostics() {
-                    let writer = StandardStream::stderr(ColorChoice::Always);
-                    let config = codespan_reporting::term::Config::default();
+        // TODO: remove clone!
+        let file_id = self.context.store(display.to_string(), content.clone());
+        let (_ast, _env) = process_file(self.context, file_id, &content)?;
 
-                    let _ =
-                        term::emit_to_io_write(&mut writer.lock(), &config, &files, &diagnostic);
-                }
-            }
-        }
+        // TODO: insert module
         Ok(())
     }
 
     fn visit_struct(&mut self, structure: &'a DeclStruct, source: Source) -> Self::Output {
-        let struct_name = GlobalSymbol::from(structure.name.name());
-
-        let mut fields = Vec::new();
+        let mut struct_ = StructInterface::new(structure.name.symbol(), source);
         for (field_name, field_type) in &structure.fields {
-            fields.push((field_name.name().to_string(), field_type.clone()));
+            struct_.declare_associaten(field_name, field_type.clone())?;
         }
-        self.scope.insert(
-            struct_name,
-            TypeDefinition::new(
-                Arc::new(Type::Named {
-                    name: GlobalSymbol::from(structure.name.name()),
-                    arguments: vec![],
-                }),
-                source,
-            ),
-        );
-        Ok(())
+        self.module.declare_type(
+            &structure.name,
+            Arc::new(Type::Named {
+                name: GlobalSymbol::from(structure.name.name()),
+                // TODO: add generics
+                arguments: vec![],
+            }),
+        )?;
+        self.module.declare_struct(struct_)
     }
 
     fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, source: Source) -> Self::Output {
@@ -100,17 +91,13 @@ impl<'a> DeclVisitor<'a> for Header {
         for (_, type_) in &func.params {
             arguments.push(type_.clone());
         }
-        self.scope.insert(
-            GlobalSymbol::from(func.name.name()),
-            TypeDefinition::new(
-                Arc::new(Type::Fn {
-                    arguments,
-                    return_: func.return_type.clone(),
-                }),
-                source,
-            ),
-        );
-        Ok(())
+        self.module.declare_var(
+            &func.name,
+            Arc::new(Type::Fn {
+                arguments,
+                return_: func.return_type.clone(),
+            }),
+        )
     }
 
     fn visit_const(
@@ -120,10 +107,6 @@ impl<'a> DeclVisitor<'a> for Header {
         _: &Expr<Self::Type>,
         source: Source,
     ) -> Self::Output {
-        self.scope.insert(
-            GlobalSymbol::from(name.name()),
-            TypeDefinition::new(type_.clone(), source),
-        );
-        Ok(())
+        self.module.declare_var(name, type_.clone())
     }
 }

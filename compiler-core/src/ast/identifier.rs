@@ -21,6 +21,10 @@ impl Identifier {
     pub fn name(&self) -> &str {
         &self.name.as_str()
     }
+
+    pub fn symbol(&self) -> GlobalSymbol {
+        self.name
+    }
 }
 
 impl Location for Identifier {

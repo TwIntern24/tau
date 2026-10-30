@@ -67,7 +67,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
     fn visit_unary(
         &mut self,
         operator: &ExprOrigin<UnaryOp>,
-        right: &'a Box<Expr<Self::Type>>,
+        right: &'a Expr<Self::Type>,
         _: &Self::Type,
     ) -> CSourceCode {
         match operator.kind() {
@@ -81,9 +81,9 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_binary(
         &mut self,
-        left: &'a Box<Expr<Self::Type>>,
+        left: &'a Expr<Self::Type>,
         operator: &ExprOrigin<BinaryOp>,
-        right: &'a Box<Expr<Self::Type>>,
+        right: &'a Expr<Self::Type>,
         _: &Self::Type,
     ) -> CSourceCode {
         let mut render_op =
@@ -117,7 +117,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_get(
         &mut self,
-        left: &'a Box<Expr<Self::Type>>,
+        left: &'a Expr<Self::Type>,
         right: &Identifier,
         _: &Self::Type,
     ) -> CSourceCode {
@@ -128,8 +128,8 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_index(
         &mut self,
-        object: &'a Box<Expr<Self::Type>>,
-        index: &'a Box<Expr<Self::Type>>,
+        object: &'a Expr<Self::Type>,
+        index: &'a Expr<Self::Type>,
         _: &'a Source,
         _: &Self::Type,
     ) -> CSourceCode {
@@ -140,7 +140,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_call(
         &mut self,
-        callee: &'a Box<Expr<Self::Type>>,
+        callee: &'a Expr<Self::Type>,
         arguments: &'a [Expr<Self::Type>],
         _: &'a Source,
         _: &Self::Type,
@@ -188,7 +188,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_if(
         &mut self,
-        condition: &'a Box<Expr<Self::Type>>,
+        condition: &'a Expr<Self::Type>,
         if_branch: &'a Box<Stmt<Self::Type>>,
         else_branch: &'a Option<Box<Stmt<Self::Type>>>,
         _: &'a Source,

@@ -8,11 +8,13 @@ use std::{
     path, result,
 };
 
+pub type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
+
 /// All results throw our error type.
 pub type Result<T> = result::Result<T, Error>;
 
 /// The file database that we currently use. This may change in the future.
-pub type FileDb<'a> = SimpleFiles<&'a path::Display<'a>, &'a str>;
+pub type FileDb = SimpleFiles<String, String>;
 pub type FileId = usize; // <FileDb as Files>::FileId
 
 #[derive(Debug)]
@@ -21,6 +23,10 @@ pub struct Error(Vec<Diagnostic<FileId>>);
 impl Error {
     pub fn new(diagnostics: Vec<Diagnostic<FileId>>) -> Self {
         Error(diagnostics)
+    }
+
+    pub fn with_diagnostic(diagnostic: Diagnostic<FileId>) -> Self {
+        Self(vec![diagnostic])
     }
 
     pub fn concat(self, next: Self) -> Self {
@@ -47,6 +53,11 @@ pub fn diagnostic(message: impl Display, source: impl Into<Source>) -> Diagnosti
     Diagnostic::error()
         .with_message(message)
         .with_label(Label::primary(source.file_id(), source.range()))
+}
+
+pub fn primary(source: impl Into<Source>) -> Label<FileId> {
+    let source = source.into();
+    Label::primary(source.file_id(), source.range())
 }
 
 pub fn label(message: impl Display, source: impl Into<Source>) -> Label<FileId> {

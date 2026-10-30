@@ -1,9 +1,9 @@
 use crate::{
-    error::{Result, error},
+    error::{Error, FileId, error},
     type_::environment::Environment,
 };
 use codespan_reporting::diagnostic::Diagnostic;
-use std::{cell::RefCell, ops::Deref, sync::Arc};
+use std::{cell::RefCell, fmt, ops::Deref, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub mod declaration;
@@ -214,12 +214,29 @@ impl Type {
     }
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Named { name, .. } => write!(formatter, "{}", name),
+            Self::Fn { arguments, return_ } => {
+                for argument in arguments {
+                    write!(formatter, "{} -> ", argument)?;
+                }
+                write!(formatter, "{}", return_)
+            }
+            Self::Var { type_ } => write!(formatter, "{:?}", type_),
+            Self::Array { type_, size } => write!(formatter, "[{}; {}]", type_, size),
+            Self::Ptr { type_, .. } => write!(formatter, "*{}", type_),
+        }
+    }
+}
+
 /// Unify two types that should be the same.
 /// Any unbound type variables will be linked to the other type as they are the
 /// same.
 ///
 /// It two types are found to not be the same an error is returned.
-pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<()> {
+pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), Diagnostic<FileId>> {
     if t1 == t2 {
         return Ok(());
     }
@@ -269,7 +286,7 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<()> {
                     *type_.borrow_mut() = TypeVar::Generic { id: *id };
                     return Ok(());
                 }
-                error(Diagnostic::error().with_message("could not unify"))
+                Err(Diagnostic::error().with_message("could not unify"))
             }
         };
     }
@@ -307,10 +324,8 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<()> {
             },
         ) => {
             if arguments1.len() != arguments2.len() {
-                return error(
-                    Diagnostic::error()
-                        .with_message("functions don't have the same number of arguments"),
-                );
+                return Err(Diagnostic::error()
+                    .with_message("functions don't have the same number of arguments"));
             }
 
             for (t1, t2) in arguments1.iter().zip(arguments2) {
@@ -321,11 +336,11 @@ pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<()> {
         }
         (Type::Ptr { type_: t1, .. }, Type::Ptr { type_: t2, .. }) => unify(t1.clone(), t2.clone()),
 
-        _ => error(Diagnostic::error().with_message(format!("expected {:?}, got {:?}", t1, t2))),
+        _ => Err(Diagnostic::error().with_message(format!("expected {}, got {}", t1, t2))),
     }
 }
 
-fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<()> {
+fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId>> {
     match type_ {
         Type::Named { arguments, .. } => {
             for argument in arguments {
@@ -339,7 +354,7 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<()> {
 
             TypeVar::Unbound { id } => {
                 if id == &own_id {
-                    error(Diagnostic::error().with_message("recursive type"))
+                    Err(Diagnostic::error().with_message("recursive type"))
                 } else {
                     Ok(())
                 }
@@ -362,8 +377,8 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<()> {
 fn match_fun_type(
     type_: Arc<Type>,
     arity: usize,
-    environment: &mut Environment<'_>,
-) -> Result<(Vec<Arc<Type>>, Arc<Type>)> {
+    environment: &mut Environment,
+) -> Result<(Vec<Arc<Type>>, Arc<Type>), Diagnostic<FileId>> {
     if let Type::Var { type_ } = type_.deref() {
         let new_value = match type_.borrow().deref() {
             TypeVar::Link { type_, .. } => {
@@ -389,13 +404,13 @@ fn match_fun_type(
 
     if let Type::Fn { arguments, return_ } = type_.deref() {
         return if arguments.len() != arity {
-            error(Diagnostic::error().with_message("function arity don't match"))
+            Err(Diagnostic::error().with_message("function arity don't match"))
         } else {
             Ok((arguments.clone(), return_.clone()))
         };
     }
 
-    error(Diagnostic::error().with_message("type is not a function"))
+    Err(Diagnostic::error().with_message("type is not a function"))
 }
 
 pub fn generalise(t: Arc<Type>) -> Arc<Type> {

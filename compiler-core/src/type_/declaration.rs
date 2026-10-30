@@ -15,7 +15,7 @@ use crate::{
 use codespan_reporting::diagnostic::Diagnostic;
 use std::{boxed::Box, collections::HashMap, sync::Arc};
 
-impl<'a> DeclFolder for SemanticAnalyser<'a> {
+impl DeclFolder for SemanticAnalyser {
     type Type = Untyped;
     type Output = Result<TypedDecl>;
 
@@ -31,6 +31,9 @@ impl<'a> DeclFolder for SemanticAnalyser<'a> {
         let (name, return_type, params, body, modifiers) =
             (f.name, f.return_type, f.params, f.body, f.modifiers);
         self.environment.begin_scope(HashMap::new());
+        for (name, type_) in &params {
+            self.environment.declare_var(name, type_.clone())?
+        }
         let body = self.fold_stmts(body)?;
         self.environment.end_scope();
         Ok(func(

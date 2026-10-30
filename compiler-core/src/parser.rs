@@ -471,6 +471,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.expr_unary(next)
             }
             TokenType::ParenLeft => self.expr_grouping(),
+            TokenType::BracketLeft => self.expr_create_array(next),
             TokenType::If => self.expr_if(next),
             x => error(diagnostic(
                 format!("found {:?} expected expression", x),
@@ -554,12 +555,9 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     /// ```txt
     /// "[" type ";" expr* "]"
     /// ```
-    fn expr_create_array(
-        &mut self,
-        name: Token,
-        size: Option<Box<UntypedExpr>>,
-    ) -> Result<UntypedExpr> {
-        self.consume(&TokenType::BraceLeft)?;
+    fn expr_create_array(&mut self, start: Token) -> Result<UntypedExpr> {
+        let type_ = self.decl_type()?;
+        self.consume(&TokenType::Semicolon);
         let mut fields = Vec::new();
         while *self.peek()?.token_type() != TokenType::BraceRight {
             fields.push(self.expr()?);
@@ -567,16 +565,11 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 self.consume(&TokenType::Comma)?;
             }
         }
+        let type_ = array(type_, fields.len());
         let end = self.consume(&TokenType::BraceRight)?;
 
-        let source = name.merge(&end);
-        let name = Identifier::from(name);
-        Ok(UntypedExpr::new(ExprKind::CreateArray {
-            // TODO: Array types don't need to be natives.
-            type_: array(named(name.into(), vec![]), fields.len()),
-            fields,
-            source,
-        }))
+        let source = start.merge(&end);
+        Ok(create_array(fields, source, type_))
     }
 
     fn expr_create_struct(&mut self, struct_name: Token) -> Result<UntypedExpr> {
@@ -681,7 +674,6 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             | TokenType::Neq => Some((5, 6)),
             TokenType::Add | TokenType::Sub | TokenType::Mod => Some((7, 8)),
             TokenType::Star | TokenType::Div => Some((9, 10)),
-            TokenType::Dot => Some((12, 11)),
             _ => None,
         }
     }
@@ -690,7 +682,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         match operator {
             // The BraceRight token type is not included here,
             // because we expect that it should only end a statement.
-            TokenType::BracketLeft | TokenType::ParenLeft => Some(11),
+            TokenType::BracketLeft | TokenType::ParenLeft | TokenType::Dot => Some(11),
             _ => None,
         }
     }

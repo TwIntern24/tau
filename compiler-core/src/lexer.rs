@@ -15,7 +15,7 @@ pub struct Lexer<'a> {
     file_id: FileId,
     line: usize,
     start: usize,
-    last: Option<char>,
+    last: Option<(usize, char)>,
 }
 
 impl<'a> Lexer<'a> {
@@ -139,12 +139,12 @@ impl<'a> Lexer<'a> {
                 } else {
                     return error(diagnostic(
                         format!("unexpected character '{}'", c),
-                        self.make_source(),
+                        self.source(),
                     ));
                 }
             }
         };
-        Ok(Token::new(token_type, self.make_source()))
+        Ok(Token::new(token_type, self.source()))
     }
 
     fn identifier(&mut self) -> Result<TokenType> {
@@ -199,10 +199,7 @@ impl<'a> Lexer<'a> {
             if Lexer::is_digit(next) {
                 self.advance()?;
             } else if next == '.' {
-                return error(diagnostic(
-                    "found a second dot in the float",
-                    self.make_source(),
-                ));
+                return error(diagnostic("found a second dot in the float", self.source()));
             } else {
                 break;
             }
@@ -236,11 +233,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek(&mut self) -> Result<char> {
-        if let Some(c) = self.last {
+        if let Some((o, c)) = self.last {
             return Ok(c);
         }
+        let o = self.chars.offset();
         let c = self.advance()?;
-        self.last = Some(c);
+        self.last = Some((o, c));
         Ok(c)
     }
 
@@ -261,7 +259,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn advance(&mut self) -> Result<char> {
-        if let Some(c) = self.last.take() {
+        if let Some((_, c)) = self.last.take() {
             return Ok(c);
         }
         self.chars
@@ -270,13 +268,20 @@ impl<'a> Lexer<'a> {
             .ok_or_else(|| Error::new(vec![Diagnostic::error().with_message("unexpected eof")]))
     }
 
-    fn view(&self) -> &str {
-        &self.source[self.start..self.chars.offset() - 1]
+    fn end(&self) -> usize {
+        if let Some((o, _)) = &self.last {
+            *o
+        } else {
+            self.chars.offset()
+        }
     }
 
-    /// Public because it is used for error
-    pub(crate) fn make_source(&self) -> Source {
-        Source::new(self.file_id, self.start..self.chars.offset())
+    fn view(&self) -> &str {
+        &self.source[self.start..self.end()]
+    }
+
+    fn source(&self) -> Source {
+        Source::new(self.file_id, self.start..self.end())
     }
 }
 

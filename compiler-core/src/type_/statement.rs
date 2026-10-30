@@ -7,12 +7,12 @@ use crate::{
         prelude::*,
         statement::{Stmt, StmtFolder},
     },
-    error::{Result, diagnostic, error},
+    error::{Error, Result, diagnostic, error, label, primary},
     lexer::Source,
     type_::{Typed, Untyped, environment::Environment, prelude::*, unify},
 };
 
-impl<'a> StmtFolder for SemanticAnalyser<'a> {
+impl StmtFolder for SemanticAnalyser {
     type Type = Untyped;
     type Output = Result<TypedStmt>;
 
@@ -29,13 +29,23 @@ impl<'a> StmtFolder for SemanticAnalyser<'a> {
         source: Source,
     ) -> Self::Output {
         let initializer = self.infer(initializer)?;
-        let declared = if let Some(declared) = declared {
-            unify(initializer.type_().clone(), declared.clone())?;
-            Some(declared)
+        let type_ = if let Some(declared) = declared {
+            unify(initializer.type_().clone(), declared.clone()).map_err(|d| {
+                Error::with_diagnostic(
+                    d.with_label(primary(source))
+                        .with_label(label(format!("declared type was {}", declared), &name))
+                        .with_label(label(
+                            format!("initializer has type {}", initializer.type_()),
+                            &initializer,
+                        )),
+                )
+            })?;
+            declared
         } else {
-            Some(initializer.type_().clone())
+            initializer.type_().clone()
         };
-        Ok(let_(name, declared, initializer, source))
+        self.environment.declare_var(&name, type_.clone())?;
+        Ok(let_(name, Some(type_), initializer, source))
     }
 
     fn fold_return(&mut self, value: Expr<Self::Type>, source: Source) -> Self::Output {

@@ -4,10 +4,10 @@ use crate::{
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
     },
-    error::{self, Result, diagnostic},
+    error::{self, FileId, diagnostic},
     lexer::source::Source,
 };
-use codespan_reporting::diagnostic::Diagnostic;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
 use std::fmt::Debug;
 use symbol_table::{GlobalSymbol, static_symbol};
 
@@ -91,9 +91,9 @@ impl TokenType {
 }
 
 impl TryFrom<TokenType> for BinaryOp {
-    type Error = error::Error;
+    type Error = Diagnostic<FileId>;
 
-    fn try_from(value: TokenType) -> Result<Self> {
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
         Ok(match value {
             TokenType::Add => BinaryOp::Add,
             TokenType::Sub => BinaryOp::Sub,
@@ -118,19 +118,15 @@ impl TryFrom<TokenType> for BinaryOp {
             TokenType::And => BinaryOp::And,
             TokenType::Or => BinaryOp::Or,
 
-            _ => {
-                return error::error(
-                    Diagnostic::error().with_message("token is not a binary operator"),
-                );
-            }
+            _ => return Err(Diagnostic::error().with_message("token is not a binary operator")),
         })
     }
 }
 
 impl TryFrom<TokenType> for UnaryOp {
-    type Error = error::Error;
+    type Error = Diagnostic<FileId>;
 
-    fn try_from(value: TokenType) -> Result<Self> {
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
         Ok(match value {
             TokenType::Sub => Self::Neg,
             TokenType::Not => Self::Not,
@@ -138,18 +134,16 @@ impl TryFrom<TokenType> for UnaryOp {
             TokenType::Star => Self::Deref,
 
             _ => {
-                return error::error(
-                    Diagnostic::error().with_message("token is not a binary operator"),
-                );
+                return Err(Diagnostic::error().with_message("token is not a unary operator"));
             }
         })
     }
 }
 
 impl TryFrom<TokenType> for Literal {
-    type Error = error::Error;
+    type Error = Diagnostic<FileId>;
 
-    fn try_from(value: TokenType) -> Result<Self> {
+    fn try_from(value: TokenType) -> Result<Self, Self::Error> {
         Ok(match value {
             TokenType::Bool(value) => Self::Bool(value),
             TokenType::Int(value) => Self::Int(value),
@@ -157,9 +151,7 @@ impl TryFrom<TokenType> for Literal {
             TokenType::String(value) => Self::String(value),
 
             _ => {
-                return error::error(
-                    Diagnostic::error().with_message("token is not a binary operator"),
-                );
+                return Err(Diagnostic::error().with_message("token is not a literal"));
             }
         })
     }
@@ -201,14 +193,17 @@ impl From<Token> for Source {
 
 impl<O> TryFrom<Token> for ExprOrigin<O>
 where
-    O: TryFrom<TokenType> + Debug,
-    error::Error: From<<O as TryFrom<TokenType>>::Error>,
+    O: TryFrom<TokenType, Error = Diagnostic<FileId>> + Debug,
 {
     type Error = error::Error;
 
-    fn try_from(value: Token) -> Result<Self> {
+    fn try_from(value: Token) -> error::Result<Self> {
         let (type_, source) = (value.token_type, value.source);
-        let kind = O::try_from(type_)?;
+        let kind = O::try_from(type_).map_err(|e| {
+            error::Error::new(vec![
+                e.with_label(Label::primary(source.file_id(), source.range())),
+            ])
+        })?;
         Ok(Self::new(kind, source))
     }
 }

@@ -3,21 +3,21 @@ use crate::{
         TypedDecl, TypedExpr, TypedStmt, UntypedDecl, UntypedExpr, UntypedStmt,
         declaration::DeclFolder, expression::ExprFolder, statement::StmtFolder,
     },
-    error::Result,
+    error::{Error, Result, label, primary},
     fold_vec,
     type_::{Typed, Untyped, environment::Environment, unify},
 };
 
-pub struct SemanticAnalyser<'a> {
-    pub(crate) environment: Environment<'a>,
+pub struct SemanticAnalyser {
+    pub(crate) environment: Environment,
 }
 
-impl<'a> SemanticAnalyser<'a> {
-    pub fn new(environment: Environment<'a>) -> Self {
+impl SemanticAnalyser {
+    pub fn new(environment: Environment) -> Self {
         Self { environment }
     }
 
-    pub fn env(self) -> Environment<'a> {
+    pub fn env(self) -> Environment {
         self.environment
     }
 
@@ -33,7 +33,12 @@ impl<'a> SemanticAnalyser<'a> {
     /// given type, recording any unification error that might take place.
     pub fn infer_and_unify(&mut self, expression: UntypedExpr, type_: Typed) -> Result<TypedExpr> {
         let expression = self.infer(expression)?;
-        unify(type_, expression.type_().clone())?;
+        unify(type_, expression.type_().clone()).map_err(|d| {
+            Error::with_diagnostic(d.with_label(primary(&expression)).with_label(label(
+                format!("expression has type {}", expression.type_()),
+                &expression,
+            )))
+        })?;
         Ok(expression)
     }
 

@@ -3,7 +3,7 @@ use std::{boxed::Box, fs::File, io::prelude::*};
 use tau_core::{
     ast::{
         TypedDecl,
-        declaration::{DeclFunc, DeclStruct, DeclVisitor},
+        declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
@@ -115,7 +115,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         .into()
     }
 
-    fn visit_get(
+    fn visit_access_struct(
         &mut self,
         left: &'a Expr<Self::Type>,
         right: &Identifier,
@@ -126,7 +126,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         format!("{}.{}", left, right).into()
     }
 
-    fn visit_index(
+    fn visit_index_array(
         &mut self,
         object: &'a Expr<Self::Type>,
         index: &'a Expr<Self::Type>,
@@ -312,11 +312,11 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
         None
     }
 
-    fn visit_struct(&mut self, _: &DeclStruct, _: Source) -> Self::Output {
+    fn visit_struct(&mut self, _: &StructDecl, _: Source) -> Self::Output {
         None
     }
 
-    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: Source) -> Self::Output {
+    fn visit_function(&mut self, function: &FuncDecl<Self::Type>, _: Source) -> Self::Output {
         if function.modifiers.is_extern {
             return None;
         }

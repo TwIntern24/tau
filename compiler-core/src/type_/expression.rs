@@ -210,7 +210,7 @@ impl ExprFolder for SemanticAnalyser {
         })
     }
 
-    fn fold_get(
+    fn fold_access_struct(
         &mut self,
         left: Expr<Self::Type>,
         right: Identifier,
@@ -243,7 +243,7 @@ impl ExprFolder for SemanticAnalyser {
         Ok(access_struct(left, right, type_))
     }
 
-    fn fold_index(
+    fn fold_index_array(
         &mut self,
         object: Expr<Self::Type>,
         index: Expr<Self::Type>,

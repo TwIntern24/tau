@@ -37,7 +37,7 @@ impl Context {
         }
     }
 
-    pub fn handle(&mut self, error: &Error) -> DynResult {
+    pub fn handle(&mut self, error: &Error) -> DynResult<()> {
         for diagnostic in error.diagnostics() {
             self.severity = Some(
                 self.severity
@@ -49,7 +49,7 @@ impl Context {
                 &self.files,
                 diagnostic,
             )
-            .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
+            .map_err(|e| Box::new(e))?;
         }
         Ok(())
     }

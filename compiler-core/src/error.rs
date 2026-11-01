@@ -9,7 +9,7 @@ use std::{
     result,
 };
 
-pub type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
+pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// All results throw our error type.
 pub type Result<T> = result::Result<T, Error>;

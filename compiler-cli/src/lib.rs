@@ -25,7 +25,7 @@ pub fn main() {
     println!("Finished in {}s", now.elapsed().as_millis() as f64 / 1000.0);
 }
 
-pub fn compile_file(context: &mut Context, args: &Options) -> DynResult {
+pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
     let filename = args.input();
     if let Ok(content) = fs::read_to_string(&filename) {
         let cache = FileCache::new(content);
@@ -35,18 +35,12 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult {
             Ok((ast, _env)) => match args.code_gen() {
                 #[cfg(feature = "c")]
                 CodeGen::C => {
-                    let folder = &args
-                        .out_dir()
-                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
+                    let folder = &args.out_dir()?;
                     let compiler = Compiler::new(&ast);
                     let header_output = output(args.output(), folder, "h");
-                    compiler
-                        .compile(CHeaderGenerator, &header_output)
-                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)?;
+                    compiler.compile(CHeaderGenerator, &header_output)?;
                     let code_output = output(args.output(), folder, "c");
-                    compiler
-                        .compile(CCodeGenerator::new(), &code_output)
-                        .map_err(|e| Box::new(e) as Box<dyn std::fmt::Debug>)
+                    compiler.compile(CCodeGenerator::new(), &code_output)
                 }
                 CodeGen::Cranelift => unimplemented!(),
             },

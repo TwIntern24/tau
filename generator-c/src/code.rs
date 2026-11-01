@@ -9,7 +9,7 @@ use tau_core::{
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
         statement::{Stmt, StmtKind, StmtVisitor},
     },
-    error,
+    error::DynResult,
     generator::Generator,
     lexer::Source,
     type_::Typed,
@@ -34,16 +34,15 @@ impl<'a> CCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CCodeGenerator {
-    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> error::Result<()> {
-        // TODO:
-        let mut file = File::create(output).unwrap();
+    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> DynResult<()> {
+        let mut file = File::create(output)?;
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("h");
         let header_file = path_buf
             .file_name()
             .expect("expect path has filename")
             .to_str()
-            .expect("expect filename is UTF-8");
+            .unwrap();
 
         let declarations = visit_vec(
             &ast.into_iter()
@@ -55,7 +54,7 @@ impl<'a> Generator<'a> for CCodeGenerator {
             "\n\n",
         );
 
-        write!(file, "#include \"{header_file}\"\n\n{declarations}\n").unwrap();
+        write!(file, "#include \"{header_file}\"\n\n{declarations}\n")?;
         Ok(())
     }
 }

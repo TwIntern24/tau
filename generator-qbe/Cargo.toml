@@ -1,0 +1,11 @@
+[package]
+name = "tau-generator-qbe"
+version = "0.1.0"
+authors = ["Karl Zschiebsch"]
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+qbe = "4.0.0"
+# The pure compiler
+tau-core = { path = "../compiler-core" }

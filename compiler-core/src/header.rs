@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         UntypedDecl,
-        declaration::{DeclFunc, DeclStruct, DeclVisitor},
+        declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::Expr,
         identifier::Identifier,
     },
@@ -63,7 +63,7 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
         Ok(())
     }
 
-    fn visit_struct(&mut self, structure: &'a DeclStruct, source: Source) -> Self::Output {
+    fn visit_struct(&mut self, structure: &'a StructDecl, source: Source) -> Self::Output {
         let mut struct_ = StructInterface::new(structure.name.symbol(), source);
         for (field_name, field_type) in &structure.fields {
             struct_.declare_associaten(field_name, field_type.clone())?;
@@ -79,7 +79,7 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
         self.module.declare_struct(struct_)
     }
 
-    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, _: Source) -> Self::Output {
+    fn visit_function(&mut self, func: &'a FuncDecl<Self::Type>, _: Source) -> Self::Output {
         let mut arguments = Vec::new();
         for (_, type_) in &func.params {
             arguments.push(type_.clone());

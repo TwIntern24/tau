@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        declaration::{Decl, DeclFunc, DeclKind, DeclStruct},
+        declaration::{Decl, DeclKind, FuncDecl, StructDecl},
         expression::{Expr, ExprKind},
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
@@ -14,11 +14,11 @@ pub fn import<T>(path: Vec<Identifier>, source: Source) -> Decl<T> {
     Decl::new(DeclKind::Import(path), source)
 }
 
-pub fn struct_<T>(struct_: DeclStruct, source: Source) -> Decl<T> {
+pub fn struct_<T>(struct_: StructDecl, source: Source) -> Decl<T> {
     Decl::new(DeclKind::Struct(struct_), source)
 }
 
-pub fn func<T>(func: DeclFunc<T>, source: Source) -> Decl<T> {
+pub fn func<T>(func: FuncDecl<T>, source: Source) -> Decl<T> {
     Decl::new(DeclKind::Func(func), source)
 }
 

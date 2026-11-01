@@ -2,7 +2,7 @@ use crate::{
     analyser::SemanticAnalyser,
     ast::{
         Identifier, TypedDecl,
-        declaration::{DeclFolder, DeclFunc, DeclStruct},
+        declaration::{DeclFolder, FuncDecl, StructDecl},
         expression::Expr,
         prelude::*,
     },
@@ -20,11 +20,11 @@ impl DeclFolder for SemanticAnalyser {
         Ok(import(path, source))
     }
 
-    fn fold_struct(&mut self, s: DeclStruct, source: Source) -> Self::Output {
+    fn fold_struct(&mut self, s: StructDecl, source: Source) -> Self::Output {
         Ok(struct_(s, source))
     }
 
-    fn fold_function(&mut self, f: DeclFunc<Self::Type>, source: Source) -> Self::Output {
+    fn fold_function(&mut self, f: FuncDecl<Self::Type>, source: Source) -> Self::Output {
         let (name, return_type, params, body, modifiers) =
             (f.name, f.return_type, f.params, f.body, f.modifiers);
         self.environment.begin_scope(HashMap::new());
@@ -34,7 +34,7 @@ impl DeclFolder for SemanticAnalyser {
         let body = self.fold_stmts(body)?;
         self.environment.end_scope();
         Ok(func(
-            DeclFunc::new(name, return_type, params, body, modifiers),
+            FuncDecl::new(name, return_type, params, body, modifiers),
             source,
         ))
     }

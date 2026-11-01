@@ -4,12 +4,12 @@ use crate::{
 };
 
 #[derive(PartialEq, Debug)]
-pub struct DeclStruct {
+pub struct StructDecl {
     pub name: Identifier,
     pub fields: Vec<(Identifier, Typed)>,
 }
 
-impl DeclStruct {
+impl StructDecl {
     pub fn new(name: Identifier, fields: Vec<(Identifier, Typed)>) -> Self {
         Self { name, fields }
     }
@@ -38,7 +38,7 @@ impl FuncModifiers {
 /// keyword return followed by any expression, possible empty. All occurences
 /// of a return must return the same type.
 #[derive(PartialEq, Debug)]
-pub struct DeclFunc<T> {
+pub struct FuncDecl<T> {
     pub name: Identifier,
     pub return_type: Typed,
     pub params: Vec<(Identifier, Typed)>,
@@ -46,7 +46,7 @@ pub struct DeclFunc<T> {
     pub modifiers: FuncModifiers,
 }
 
-impl<T> DeclFunc<T> {
+impl<T> FuncDecl<T> {
     pub fn new(
         name: Identifier,
         return_type: Typed,
@@ -92,8 +92,8 @@ impl<T> Location for Decl<T> {
 #[derive(PartialEq, Debug)]
 pub enum DeclKind<T> {
     Import(Vec<Identifier>),
-    Struct(DeclStruct),
-    Func(DeclFunc<T>),
+    Struct(StructDecl),
+    Func(FuncDecl<T>),
     Const {
         name: Identifier,
         type_: Typed,
@@ -120,9 +120,9 @@ pub trait DeclVisitor<'a> {
 
     fn visit_import(&mut self, path: &'a [Identifier], source: Source) -> Self::Output;
 
-    fn visit_struct(&mut self, struct_: &'a DeclStruct, source: Source) -> Self::Output;
+    fn visit_struct(&mut self, struct_: &'a StructDecl, source: Source) -> Self::Output;
 
-    fn visit_function(&mut self, func: &'a DeclFunc<Self::Type>, source: Source) -> Self::Output;
+    fn visit_function(&mut self, func: &'a FuncDecl<Self::Type>, source: Source) -> Self::Output;
 
     fn visit_const(
         &mut self,
@@ -153,9 +153,9 @@ pub trait DeclFolder {
 
     fn fold_import(&mut self, path: Vec<Identifier>, source: Source) -> Self::Output;
 
-    fn fold_struct(&mut self, struct_: DeclStruct, source: Source) -> Self::Output;
+    fn fold_struct(&mut self, struct_: StructDecl, source: Source) -> Self::Output;
 
-    fn fold_function(&mut self, func: DeclFunc<Self::Type>, source: Source) -> Self::Output;
+    fn fold_function(&mut self, func: FuncDecl<Self::Type>, source: Source) -> Self::Output;
 
     fn fold_const(
         &mut self,

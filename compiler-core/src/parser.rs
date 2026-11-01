@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Location, UntypedDecl, UntypedExpr, UntypedStmt,
-        declaration::{DeclFunc, DeclKind, DeclStruct, FuncModifiers},
+        declaration::{DeclKind, FuncDecl, FuncModifiers, StructDecl},
         identifier::Identifier,
         origin::ExprOrigin,
         prelude::*,
@@ -162,7 +162,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
 
         let source = start.source().merge(end);
         Ok(UntypedDecl::new(
-            DeclKind::Func(DeclFunc {
+            DeclKind::Func(FuncDecl {
                 name: Identifier::from(name),
                 return_type,
                 params,
@@ -233,7 +233,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let end = self.consume(&TokenType::BraceRight)?;
         let source = start.merge(&end);
         Ok(UntypedDecl::new(
-            DeclKind::Struct(DeclStruct {
+            DeclKind::Struct(StructDecl {
                 name: Identifier::from(name),
                 fields,
             }),

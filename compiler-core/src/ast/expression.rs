@@ -256,13 +256,15 @@ pub trait TypedExprVisitor<'a> {
                 right,
                 type_,
             } => self.visit_binary(left, operator, right, type_),
-            ExprKind::AccessStruct { left, right, type_ } => self.visit_get(left, right, type_),
+            ExprKind::AccessStruct { left, right, type_ } => {
+                self.visit_access_struct(left, right, type_)
+            }
             ExprKind::IndexArray {
                 object,
                 index,
                 source,
                 type_,
-            } => self.visit_index(object, index, source, type_),
+            } => self.visit_index_array(object, index, source, type_),
             ExprKind::Call {
                 callee,
                 arguments,
@@ -306,14 +308,14 @@ pub trait TypedExprVisitor<'a> {
         type_: &'a Self::Type,
     ) -> Self::Output;
 
-    fn visit_get(
+    fn visit_access_struct(
         &mut self,
         left: &'a Expr<Self::Type>,
         right: &'a Identifier,
         type_: &'a Self::Type,
     ) -> Self::Output;
 
-    fn visit_index(
+    fn visit_index_array(
         &mut self,
         object: &'a Expr<Self::Type>,
         index: &'a Expr<Self::Type>,
@@ -378,13 +380,15 @@ pub trait ExprFolder {
                 right,
                 type_,
             } => self.fold_binary(*left, operator, *right, type_),
-            ExprKind::AccessStruct { left, right, type_ } => self.fold_get(*left, right, type_),
+            ExprKind::AccessStruct { left, right, type_ } => {
+                self.fold_access_struct(*left, right, type_)
+            }
             ExprKind::IndexArray {
                 object,
                 index,
                 source,
                 type_,
-            } => self.fold_index(*object, *index, source, type_),
+            } => self.fold_index_array(*object, *index, source, type_),
             ExprKind::Call {
                 callee,
                 arguments,
@@ -428,14 +432,14 @@ pub trait ExprFolder {
         type_: Self::Type,
     ) -> Self::Output;
 
-    fn fold_get(
+    fn fold_access_struct(
         &mut self,
         left: Expr<Self::Type>,
         right: Identifier,
         type_: Self::Type,
     ) -> Self::Output;
 
-    fn fold_index(
+    fn fold_index_array(
         &mut self,
         object: Expr<Self::Type>,
         index: Expr<Self::Type>,

@@ -3,7 +3,7 @@ use symbol_table::static_symbol;
 use tau_core::{
     ast::{
         Identifier,
-        declaration::{DeclFunc, DeclStruct, FuncModifiers},
+        declaration::{FuncDecl, FuncModifiers, StructDecl},
         origin::{ExprOrigin, Literal},
         prelude::*,
     },
@@ -39,7 +39,7 @@ fn parses_from_lexer() {
     assert_ok!(&ast);
     let expected = vec![
         struct_(
-            DeclStruct::new(
+            StructDecl::new(
                 Identifier::new(static_symbol!("Structure"), Source::new(file_id, 10..19)),
                 vec![
                     (
@@ -58,7 +58,7 @@ fn parses_from_lexer() {
             Source::new(file_id, 3..86),
         ),
         func(
-            DeclFunc::new(
+            FuncDecl::new(
                 Identifier::new(static_symbol!("modifiers"), Source::new(file_id, 100..108)),
                 void(),
                 vec![],
@@ -68,7 +68,7 @@ fn parses_from_lexer() {
             Source::new(file_id, 87..117),
         ),
         func(
-            DeclFunc::new(
+            FuncDecl::new(
                 Identifier::new(static_symbol!("keywords"), Source::new(file_id, 121..128)),
                 named(static_symbol!("T3"), vec![]),
                 vec![

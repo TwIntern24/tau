@@ -2,7 +2,7 @@ use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        declaration::{Decl, DeclFunc, DeclStruct, DeclVisitor},
+        declaration::{Decl, DeclVisitor, FuncDecl, StructDecl},
         expression::Expr,
         identifier::Identifier,
     },
@@ -52,7 +52,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         CSourceCode::from(format!("#include <{path}.hpp>"))
     }
 
-    fn visit_struct(&mut self, structure: &DeclStruct, _: Source) -> CSourceCode {
+    fn visit_struct(&mut self, structure: &StructDecl, _: Source) -> CSourceCode {
         let name = CSourceCode::from(&structure.name);
         let fields = structure
             .fields
@@ -70,7 +70,7 @@ impl DeclVisitor<'_> for CHeaderGenerator {
         format!("typedef struct {name} {{\n{fields}\n}} {name};").into()
     }
 
-    fn visit_function(&mut self, function: &DeclFunc<Self::Type>, _: Source) -> CSourceCode {
+    fn visit_function(&mut self, function: &FuncDecl<Self::Type>, _: Source) -> CSourceCode {
         let name = CSourceCode::from(&function.name);
         let extern_ = if function.modifiers.is_extern {
             "extern "

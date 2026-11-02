@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        TypedDecl, TypedExpr, TypedStmt, UntypedDecl, UntypedExpr, UntypedStmt,
-        declaration::DeclFolder, expression::ExprFolder, statement::StmtFolder,
+        TypedDecl, TypedExpr, UntypedDecl, UntypedExpr, declaration::DeclFolder,
+        expression::ExprFolder,
     },
     error::{Error, Result, label, primary},
     fold_vec,
@@ -43,10 +43,6 @@ impl SemanticAnalyser {
     }
 
     pub fn fold_ast(&mut self, ast: Vec<UntypedDecl>) -> Result<Vec<TypedDecl>> {
-        fold_vec!(self, ast, fold_decl)
-    }
-
-    pub fn fold_stmts(&mut self, statements: Vec<UntypedStmt>) -> Result<Vec<TypedStmt>> {
-        fold_vec!(self, statements, fold_stmt)
+        fold_vec!(self, fold_decl, ast)
     }
 }

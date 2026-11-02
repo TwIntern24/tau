@@ -164,10 +164,20 @@ impl StmtFolder for Translator {
         todo!()
     }
 
+    fn fold_if(
+        &mut self,
+        condition: Expr<Self::Type>,
+        if_branch: Vec<Stmt<Self::Type>>,
+        else_branch: Option<Vec<Stmt<Self::Type>>>,
+        source: Source,
+    ) -> Self::Output {
+        todo!()
+    }
+
     fn fold_while(
         &mut self,
         condition: Expr<Self::Type>,
-        body: Box<Stmt<Self::Type>>,
+        body: Vec<Stmt<Self::Type>>,
         source: Source,
     ) -> Self::Output {
         todo!()
@@ -310,19 +320,17 @@ impl ExprFolder for Translator {
         todo!()
     }
 
-    fn fold_if(
+    fn fold_ternary(
         &mut self,
         condition: Expr<Self::Type>,
-        if_branch: Box<Stmt<Self::Type>>,
-        else_branch: Option<Box<Stmt<Self::Type>>>,
+        if_branch: Expr<Self::Type>,
+        else_branch: Expr<Self::Type>,
         _: Source,
         type_: Self::Type,
     ) -> Self::Output {
         let condition = self.fold_expr(condition);
-        let if_branch = self.fold_stmt(*if_branch);
-        if let Some(else_branch) = else_branch {
-            let else_branch = self.fold_stmt(*else_branch);
-        }
+        let if_branch = self.fold_expr(if_branch);
+        let else_branch = self.fold_expr(else_branch);
         // We can not compile this, because if may return nothing!
         // To translate this, we need to change the ast first.
         todo!()

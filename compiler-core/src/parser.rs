@@ -11,7 +11,7 @@ use crate::{
     lexer::{Source, Token, TokenType},
     type_::{Type, prelude::*},
 };
-use std::{boxed::Box, iter::Iterator, sync::Arc};
+use std::{iter::Iterator, sync::Arc};
 use symbol_table::GlobalSymbol;
 
 // Pratt parser inspired after the following block post:
@@ -317,6 +317,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
                 Ok(break_(source))
             }
             TokenType::For => self.stmt_for(),
+            TokenType::If => self.stmt_if(),
             TokenType::While => self.stmt_while(),
             _ => {
                 let expr = self.expr()?;
@@ -332,12 +333,17 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
-    fn stmt_block(&mut self) -> Result<UntypedStmt> {
-        let start = self.advance()?;
+    fn stmt_list(&mut self) -> Result<Vec<UntypedStmt>> {
         let mut statements = Vec::new();
         while *self.peek()?.token_type() != TokenType::BraceRight {
             statements.push(self.stmt()?);
         }
+        return Ok(statements);
+    }
+
+    fn stmt_block(&mut self) -> Result<UntypedStmt> {
+        let start = self.advance()?;
+        let statements = self.stmt_list()?;
         let end = self.consume(&TokenType::BraceRight)?;
         let source = start.merge(&end);
         Ok(UntypedStmt::new(StmtKind::Block { statements }, source))
@@ -399,14 +405,46 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         let condition = self.expr()?;
         self.consume(&TokenType::Semicolon)?;
         let increment = self.expr()?;
-        let body = self.stmt_block()?;
+
+        self.consume(&TokenType::BraceLeft)?;
+        let mut body = self.stmt_list()?;
+        let end = self.consume(&TokenType::BraceRight)?;
         let source = increment.source();
         let increment = expr_stmt(increment, source);
-        let source = body.source();
-        let body = block(vec![body, increment], source);
-        let source = start.merge(&body);
+        body.push(increment);
+
+        let source = start.merge(&end);
         let statements = vec![initializer, while_(condition, body, source)];
         Ok(block(statements, source))
+    }
+
+    fn stmt_if(&mut self) -> Result<UntypedStmt> {
+        let start = self.consume(&TokenType::If)?;
+        self.consume(&TokenType::ParenLeft)?;
+        let condition = self.expr()?;
+        self.consume(&TokenType::ParenRight)?;
+        self.consume(&TokenType::BraceLeft)?;
+        let if_branch = self.stmt_list()?;
+        let end = self.consume(&TokenType::BraceRight)?;
+        let (else_branch, source) = if *self.peek()?.token_type() == TokenType::Else {
+            self.consume(&TokenType::Else)?;
+            let (else_branch, end) = if *self.peek()?.token_type() == TokenType::If {
+                let if_branch = self.stmt_if()?;
+                let source = if_branch.source();
+                (vec![if_branch], source)
+            } else {
+                self.consume(&TokenType::BraceLeft)?;
+                let else_branch = self.stmt_list()?;
+                let end = self.consume(&TokenType::BraceRight)?;
+                (else_branch, end.source())
+            };
+            let source = start.source().merge(end);
+            (Some(else_branch), source)
+        } else {
+            let source = start.merge(&end);
+            (None, source)
+        };
+        Ok(if_(condition, if_branch, else_branch, source))
     }
 
     fn stmt_while(&mut self) -> Result<UntypedStmt> {
@@ -414,15 +452,11 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.consume(&TokenType::ParenLeft)?;
         let condition = self.expr()?;
         self.consume(&TokenType::ParenRight)?;
-        let body = self.stmt_block()?;
-        let source = start.merge(&body);
-        Ok(UntypedStmt::new(
-            StmtKind::While {
-                condition,
-                body: Box::new(body),
-            },
-            source,
-        ))
+        self.consume(&TokenType::BraceLeft)?;
+        let body = self.stmt_list()?;
+        let end = self.consume(&TokenType::BraceLeft)?;
+        let source = start.merge(&end);
+        Ok(while_(condition, body, source))
     }
 
     pub(crate) fn expr(&mut self) -> Result<UntypedExpr> {
@@ -485,7 +519,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             }
             TokenType::ParenLeft => self.expr_grouping(),
             TokenType::BracketLeft => self.expr_create_array(next),
-            TokenType::If => self.expr_if(next),
+            TokenType::If => self.expr_ternary(next),
             x => error(diagnostic(
                 format!("found {:?} expected expression", x),
                 &next,
@@ -634,25 +668,19 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
-    fn expr_if(&mut self, start: Token) -> Result<UntypedExpr> {
+    fn expr_ternary(&mut self, start: Token) -> Result<UntypedExpr> {
         self.consume(&TokenType::ParenLeft)?;
         let condition = self.expr()?;
         self.consume(&TokenType::ParenRight)?;
         self.consume(&TokenType::BraceLeft)?;
-        let if_branch = self.stmt()?;
+        let if_branch = self.expr()?;
+        self.consume(&TokenType::BraceRight)?;
+        self.consume(&TokenType::Else)?;
+        self.consume(&TokenType::BraceLeft)?;
+        let else_branch = self.expr()?;
         let end = self.consume(&TokenType::BraceRight)?;
-        let (else_branch, source) = if *self.peek()?.token_type() == TokenType::Else {
-            self.consume(&TokenType::Else)?;
-            self.consume(&TokenType::BraceLeft)?;
-            let else_branch = self.stmt()?;
-            let end = self.consume(&TokenType::BraceRight)?;
-            let source = start.merge(&end);
-            (Some(else_branch), source)
-        } else {
-            let source = start.merge(&end);
-            (None, source)
-        };
-        Ok(if_(condition, if_branch, else_branch, source, ()))
+        let source = start.merge(&end);
+        Ok(ternary(condition, if_branch, else_branch, source, ()))
     }
 
     fn expr_literal(&mut self, next: Token) -> Result<UntypedExpr> {

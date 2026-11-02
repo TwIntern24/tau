@@ -19,6 +19,12 @@ impl Display for CSourceCode {
     }
 }
 
+impl AsRef<str> for CSourceCode {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl From<&Type> for CSourceCode {
     fn from(type_def: &Type) -> Self {
         CSourceCode(match type_def {

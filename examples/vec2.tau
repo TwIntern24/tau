@@ -28,6 +28,12 @@ fn norm(v: Vec2) -> Vec2 =
         else { vec2(v.x / len, v.y / len) }
 
 io fn main() {
-    let _ = add(vec2(3.0, 4.0), vec2(4.0, -2.0));
-    puts("Hello, World!");
+    let len = length(add(vec2(3.0, 4.0), vec2(4.0, -2.0)));
+    if (len > 0.0) {
+        puts("vector len is positive");
+    } else if (len < 0.0) {
+        puts("vector is the zero vector")
+    } else {
+        puts("vector len should always be >= 0")
+    }
 }

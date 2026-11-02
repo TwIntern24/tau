@@ -5,13 +5,11 @@ use crate::{
         expression::{Expr, ExprFolder, ExprKind},
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
         prelude::*,
-        statement::{Stmt, StmtFolder, StmtKind},
     },
     error::{Error, Result, diagnostic, error, label, primary},
     lexer::Source,
     type_::{Type, Typed, Untyped, collapse_links, prelude::*, unify},
 };
-use std::boxed::Box;
 
 impl ExprFolder for SemanticAnalyser {
     type Type = Untyped;
@@ -343,11 +341,11 @@ impl ExprFolder for SemanticAnalyser {
         Ok(create_struct(folded, source, type_))
     }
 
-    fn fold_if(
+    fn fold_ternary(
         &mut self,
         condition: Expr<Self::Type>,
-        if_branch: Box<Stmt<Self::Type>>,
-        else_branch: Option<Box<Stmt<Self::Type>>>,
+        if_branch: Expr<Self::Type>,
+        else_branch: Expr<Self::Type>,
         source: Source,
         _: Self::Type,
     ) -> Self::Output {
@@ -355,21 +353,12 @@ impl ExprFolder for SemanticAnalyser {
         let condition = self.fold_expr(condition)?;
 
         // Fold both branches
-        let if_branch = self.fold_stmt(*if_branch)?;
-        let else_branch = match else_branch {
-            Some(else_branch) => self.fold_stmt(*else_branch)?,
-            None => return Ok(if_(condition, if_branch, None, source, void())),
-        };
+        let if_branch = self.fold_expr(if_branch)?;
+        let else_branch = self.fold_expr(else_branch)?;
 
         // Check if the return type of both branches match
-        let if_type = match if_branch.kind() {
-            StmtKind::ExprStmt(expr) => expr.type_().clone(),
-            _ => void(),
-        };
-        let else_type = match else_branch.kind() {
-            StmtKind::ExprStmt(expr) => expr.type_().clone(),
-            _ => void(),
-        };
+        let if_type = if_branch.type_();
+        let else_type = else_branch.type_();
         unify(else_type.clone(), if_type.clone()).map_err(|d| {
             Error::with_diagnostic(
                 d.with_label(primary(source))
@@ -380,13 +369,8 @@ impl ExprFolder for SemanticAnalyser {
                     )),
             )
         })?;
-        Ok(if_(
-            condition,
-            if_branch,
-            Some(else_branch),
-            source,
-            if_type,
-        ))
+        let type_ = if_type.clone();
+        Ok(ternary(condition, if_branch, else_branch, source, type_))
     }
 
     fn fold_literal(&mut self, value: ExprOrigin<Literal>, _: Self::Type) -> Self::Output {

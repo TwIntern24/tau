@@ -7,9 +7,14 @@ mod source_code;
 pub use code::CCodeGenerator;
 pub use header::CHeaderGenerator;
 
-fn visit_vec<T, F>(params: &[T], f: F, j: &str) -> CSourceCode
+fn visit_vec<I, F>(params: &[I], func: F, sep: &str) -> CSourceCode
 where
-    F: FnMut(&T) -> String,
+    F: FnMut(&I) -> String,
 {
-    params.iter().map(f).collect::<Vec<String>>().join(j).into()
+    params
+        .iter()
+        .map(func)
+        .collect::<Vec<String>>()
+        .join(sep)
+        .into()
 }

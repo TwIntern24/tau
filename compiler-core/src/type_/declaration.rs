@@ -5,8 +5,10 @@ use crate::{
         declaration::{DeclFolder, FuncDecl, StructDecl},
         expression::Expr,
         prelude::*,
+        statement::StmtFolder,
     },
     error::Result,
+    fold_vec,
     lexer::Source,
     type_::{Typed, Untyped},
 };
@@ -31,7 +33,7 @@ impl DeclFolder for SemanticAnalyser {
         for (name, type_) in &params {
             self.environment.declare_var(name, type_.clone())?
         }
-        let body = self.fold_stmts(body)?;
+        let body = fold_vec!(self, fold_stmt, body)?;
         self.environment.end_scope();
         Ok(func(
             FuncDecl::new(name, return_type, params, body, modifiers),

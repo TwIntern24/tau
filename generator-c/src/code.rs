@@ -1,13 +1,13 @@
 use crate::{source_code::CSourceCode, visit_vec};
-use std::{boxed::Box, fs::File, io::prelude::*};
+use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        TypedDecl,
+        TypedDecl, TypedStmt,
         declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
-        statement::{Stmt, StmtKind, StmtVisitor},
+        statement::{Stmt, StmtVisitor},
     },
     error::DynResult,
     generator::Generator,
@@ -22,6 +22,11 @@ pub struct CCodeGenerator {
 impl<'a> CCodeGenerator {
     pub fn new() -> CCodeGenerator {
         CCodeGenerator { indent: 0 }
+    }
+
+    fn visit_idented(&mut self, stmt: &TypedStmt) -> CSourceCode {
+        let code = self.visit_stmt(stmt);
+        CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
     }
 
     fn begin_scope(&mut self) {
@@ -185,37 +190,18 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         format!("({type_}) {{{fields}}}").into()
     }
 
-    fn visit_if(
+    fn visit_ternary(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        if_branch: &'a Box<Stmt<Self::Type>>,
-        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        if_branch: &'a Expr<Self::Type>,
+        else_branch: &'a Expr<Self::Type>,
         _: &'a Source,
-        type_: &Self::Type,
+        _: &Self::Type,
     ) -> CSourceCode {
         let condition = self.visit_expr(condition);
-        if type_.as_ref().is_void() {
-            let if_branch = self.visit_stmt(if_branch);
-            if let Some(else_branch) = else_branch {
-                let else_branch = self.visit_stmt(else_branch);
-                format!("if ({condition}) {{ {if_branch} }} else {{ {else_branch} }}").into()
-            } else {
-                format!("if ({condition}) {{ {if_branch} }}").into()
-            }
-        } else {
-            let stmt2expr = |stmt: &'a Stmt<Self::Type>| match stmt.kind() {
-                StmtKind::ExprStmt(expr) => expr,
-                _ => panic!("Could not convert statement to expression"),
-            };
-
-            let if_branch = self.visit_expr(stmt2expr(&if_branch.as_ref()));
-            let else_branch = self.visit_expr(stmt2expr(
-                &else_branch
-                    .as_ref()
-                    .expect("expected else expression exists"),
-            ));
-            format!("{condition} ? {if_branch} : {else_branch}").into()
-        }
+        let if_branch = self.visit_expr(if_branch);
+        let else_branch = self.visit_expr(else_branch);
+        format!("{condition} ? {if_branch} : {else_branch}").into()
     }
 
     fn visit_literal(&mut self, value: &ExprOrigin<Literal>, _: &Self::Type) -> CSourceCode {
@@ -237,27 +223,11 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     type Type = Typed;
     type Output = CSourceCode;
 
-    fn visit_stmt(&mut self, stmt: &'a Stmt<Self::Type>) -> Self::Output {
-        let code = match stmt.kind() {
-            StmtKind::Block { statements } => self.visit_block(statements),
-            StmtKind::Let {
-                name,
-                declared,
-                initializer,
-            } => self.visit_let(name, declared, initializer),
-            StmtKind::Return { value } => self.visit_return(value),
-            StmtKind::Break => self.visit_break(),
-            StmtKind::While { condition, body } => self.visit_while(condition, body),
-            StmtKind::ExprStmt(expr) => self.visit_expr_stmt(expr),
-        };
-        CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
-    }
-
     fn visit_block(&mut self, statements: &'a [Stmt<Self::Type>]) -> Self::Output {
         self.begin_scope();
         let statements = visit_vec(
             statements,
-            |stmt| format!("{}", self.visit_stmt(stmt)),
+            |stmt| format!("{}", self.visit_idented(stmt)),
             "\n",
         );
         self.end_scope();
@@ -285,14 +255,34 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
         "break;".to_string().into()
     }
 
+    fn visit_if(
+        &mut self,
+        condition: &'a Expr<Self::Type>,
+        if_branch: &'a Vec<Stmt<Self::Type>>,
+        else_branch: &'a Option<Vec<Stmt<Self::Type>>>,
+    ) -> Self::Output {
+        let condition = self.visit_expr(condition);
+        let if_branch = visit_vec(if_branch, |stmt| self.visit_idented(stmt).to_string(), "");
+        if let Some(else_branch) = else_branch {
+            let else_branch = visit_vec(
+                &else_branch,
+                |stmt| self.visit_idented(stmt).to_string(),
+                "",
+            );
+            format!("if ({condition}) {{ {if_branch} }} else {{ {else_branch} }}").into()
+        } else {
+            format!("if ({condition}) {{ {if_branch} }}").into()
+        }
+    }
+
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Box<Stmt<Self::Type>>,
+        body: &'a Vec<Stmt<Self::Type>>,
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         self.begin_scope();
-        let body = self.visit_stmt(body);
+        let body = visit_vec(body, |stmt| self.visit_idented(stmt).to_string(), "");
         self.end_scope();
         format!("while ({condition}) {body}").into()
     }
@@ -327,7 +317,11 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
             ", ",
         );
         self.begin_scope();
-        let body = visit_vec(&function.body, |x| format!("{}", self.visit_stmt(x)), "\n");
+        let body = visit_vec(
+            &function.body,
+            |x| format!("{}", self.visit_idented(x)),
+            "\n",
+        );
         self.end_scope();
         Some(CSourceCode::from(format!(
             "{return_type} {name}({params}) {{\n{body}\n}}"

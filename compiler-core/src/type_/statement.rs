@@ -8,6 +8,7 @@ use crate::{
         statement::{Stmt, StmtFolder},
     },
     error::{Error, Result, label, primary},
+    fold_vec,
     lexer::Source,
     type_::{Typed, Untyped, prelude::*, unify},
 };
@@ -17,7 +18,7 @@ impl StmtFolder for SemanticAnalyser {
     type Output = Result<TypedStmt>;
 
     fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, source: Source) -> Self::Output {
-        let statements = self.fold_stmts(statements)?;
+        let statements = fold_vec!(self, fold_stmt, statements)?;
         Ok(block(statements, source))
     }
 
@@ -57,14 +58,31 @@ impl StmtFolder for SemanticAnalyser {
         Ok(break_(source))
     }
 
-    fn fold_while(
+    fn fold_if(
         &mut self,
         condition: Expr<Self::Type>,
-        body: Box<Stmt<Self::Type>>,
+        if_branch: Vec<Stmt<Self::Type>>,
+        else_branch: Option<Vec<Stmt<Self::Type>>>,
         source: Source,
     ) -> Self::Output {
         let condition = self.infer_and_unify(condition, bool())?;
-        let body = self.fold_stmt(*body)?;
+        let if_branch = fold_vec!(self, fold_stmt, if_branch)?;
+        let else_branch = if let Some(else_branch) = else_branch {
+            Some(fold_vec!(self, fold_stmt, else_branch)?)
+        } else {
+            None
+        };
+        Ok(if_(condition, if_branch, else_branch, source))
+    }
+
+    fn fold_while(
+        &mut self,
+        condition: Expr<Self::Type>,
+        body: Vec<Stmt<Self::Type>>,
+        source: Source,
+    ) -> Self::Output {
+        let condition = self.infer_and_unify(condition, bool())?;
+        let body = fold_vec!(self, fold_stmt, body)?;
         Ok(while_(condition, body, source))
     }
 

@@ -1,9 +1,8 @@
 use crate::{
     ast::{
-        Location, Typed, UntypedExpr, UntypedStmt,
+        Location, Typed, UntypedExpr,
         identifier::Identifier,
         origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
-        statement::Stmt,
     },
     lexer::Source,
 };
@@ -34,7 +33,7 @@ impl Expr<Typed> {
             | ExprKind::AccessStruct { type_, .. }
             | ExprKind::CreateArray { type_, .. }
             | ExprKind::CreateStruct { type_, .. }
-            | ExprKind::If { type_, .. }
+            | ExprKind::Ternary { type_, .. }
             | ExprKind::Literal { type_, .. }
             | ExprKind::Variable { type_, .. } => type_,
         }
@@ -48,7 +47,7 @@ impl<T> Location for Expr<T> {
             | ExprKind::IndexArray { source, .. }
             | ExprKind::CreateArray { source, .. }
             | ExprKind::CreateStruct { source, .. }
-            | ExprKind::If { source, .. } => *source,
+            | ExprKind::Ternary { source, .. } => *source,
             ExprKind::Unary {
                 operator: start,
                 right: end,
@@ -115,10 +114,10 @@ pub enum ExprKind<T> {
         source: Source,
         type_: Typed,
     },
-    If {
+    Ternary {
         condition: Box<Expr<T>>,
-        if_branch: Box<Stmt<T>>,
-        else_branch: Option<Box<Stmt<T>>>,
+        if_branch: Box<Expr<T>>,
+        else_branch: Box<Expr<T>>,
         source: Source,
         type_: T,
     },
@@ -175,13 +174,13 @@ pub trait UntypedExprVisitor<'a> {
                 source,
                 type_: _,
             } => self.visit_create_struct(fields, source),
-            ExprKind::If {
+            ExprKind::Ternary {
                 condition,
                 if_branch,
                 else_branch,
                 source,
                 type_: _,
-            } => self.visit_if(condition, if_branch, else_branch, source),
+            } => self.visit_ternary(condition, if_branch, else_branch, source),
             ExprKind::Literal { literal, type_: _ } => self.visit_literal(literal),
             ExprKind::Variable { name, type_: _ } => self.visit_variable(name),
         }
@@ -226,11 +225,11 @@ pub trait UntypedExprVisitor<'a> {
         source: &'a Source,
     ) -> Self::Output;
 
-    fn visit_if(
+    fn visit_ternary(
         &mut self,
         condition: &'a UntypedExpr,
-        if_branch: &'a Box<UntypedStmt>,
-        else_branch: &'a Option<Box<UntypedStmt>>,
+        if_branch: &'a UntypedExpr,
+        else_branch: &'a UntypedExpr,
         source: &'a Source,
     ) -> Self::Output;
 
@@ -281,13 +280,13 @@ pub trait TypedExprVisitor<'a> {
                 source,
                 type_,
             } => self.visit_create_struct(fields, source, type_),
-            ExprKind::If {
+            ExprKind::Ternary {
                 condition,
                 if_branch,
                 else_branch,
                 source,
                 type_,
-            } => self.visit_if(condition, if_branch, else_branch, source, type_),
+            } => self.visit_ternary(condition, if_branch, else_branch, source, type_),
             ExprKind::Literal { literal, type_ } => self.visit_literal(literal, type_),
             ExprKind::Variable { name, type_ } => self.visit_variable(name, type_),
         }
@@ -345,11 +344,11 @@ pub trait TypedExprVisitor<'a> {
         type_: &'a Typed,
     ) -> Self::Output;
 
-    fn visit_if(
+    fn visit_ternary(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        if_branch: &'a Box<Stmt<Self::Type>>,
-        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        if_branch: &'a Expr<Self::Type>,
+        else_branch: &'a Expr<Self::Type>,
         source: &'a Source,
         type_: &'a Self::Type,
     ) -> Self::Output;
@@ -405,13 +404,13 @@ pub trait ExprFolder {
                 source,
                 type_,
             } => self.fold_create_struct(fields, source, type_),
-            ExprKind::If {
+            ExprKind::Ternary {
                 condition,
                 if_branch,
                 else_branch,
                 source,
                 type_,
-            } => self.fold_if(*condition, if_branch, else_branch, source, type_),
+            } => self.fold_ternary(*condition, *if_branch, *else_branch, source, type_),
             ExprKind::Literal { literal, type_ } => self.fold_literal(literal, type_),
             ExprKind::Variable { name, type_ } => self.fold_variable(name, type_),
         }
@@ -469,11 +468,11 @@ pub trait ExprFolder {
         type_: Typed,
     ) -> Self::Output;
 
-    fn fold_if(
+    fn fold_ternary(
         &mut self,
         condition: Expr<Self::Type>,
-        if_branch: Box<Stmt<Self::Type>>,
-        else_branch: Option<Box<Stmt<Self::Type>>>,
+        if_branch: Expr<Self::Type>,
+        else_branch: Expr<Self::Type>,
         source: Source,
         type_: Self::Type,
     ) -> Self::Output;

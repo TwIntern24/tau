@@ -26,8 +26,8 @@ impl<'a> Lexer<'a> {
             start: 0,
             last: None,
         };
-        // We need to skip leading spaces so that the lexer directly starts at the first
-        // token.
+        // We need to skip leading spaces so that the lexer directly starts at
+        // the first token.
         lexer.skip_space();
         lexer
     }
@@ -137,8 +137,8 @@ impl<'a> Lexer<'a> {
                 }
             }
         };
-        // When we call this method again, we expect that is points again at the next
-        // non-space character.
+        // When we call this method again, we expect that is points again at the
+        // next non-space character.
         self.skip_space();
         Ok(Token::new(token_type, self.source()))
     }

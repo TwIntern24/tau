@@ -2,6 +2,7 @@ use symbol_table::GlobalSymbol;
 
 use crate::ir::{type_::Type, value::Value};
 
+#[derive(Debug)]
 pub enum Cmp {
     /// Signed less then (<)
     Slt,
@@ -25,17 +26,24 @@ pub enum Cmp {
     Uge,
 }
 
+#[derive(Debug)]
 pub enum Instr {
+    // (number -> number) -> number
     Add(Value, Value),
     Sub(Value, Value),
     Mul(Value, Value),
     Div(Value, Value),
-    Rem(Value, Value),
+    Mod(Value, Value),
+
+    // a <- a
+    Mov(Value, Value),
+
     Cmp(Type, Cmp, Value, Value),
     And(Value, Value),
     Or(Value, Value),
     Xor(Value, Value),
     Neg(Value),
+    Not(Value),
     Copy(Value),
     Ret(Option<Value>),
     Jnz(Value, GlobalSymbol, GlobalSymbol),

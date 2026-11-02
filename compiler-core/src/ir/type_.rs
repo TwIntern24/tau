@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{boxed::Box, sync::Arc};
 
 use symbol_table::GlobalSymbol;
 
+#[derive(Debug)]
 pub enum TypeDef {
     Regular {
         ident: GlobalSymbol,
@@ -20,7 +21,9 @@ pub enum TypeDef {
     },
 }
 
+#[derive(Clone, Debug)]
 pub enum Type {
+    Bool,
     U8,
     U16,
     U32,
@@ -31,5 +34,6 @@ pub enum Type {
     I64,
     F32,
     F64,
+    Pointer(Box<Type>),
     Aggregate(Arc<TypeDef>),
 }

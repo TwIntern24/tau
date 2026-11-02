@@ -5,6 +5,7 @@ pub mod block;
 pub mod data;
 pub mod function;
 pub mod instruction;
+pub mod linkage;
 pub mod module;
 pub mod statement;
 pub mod type_;

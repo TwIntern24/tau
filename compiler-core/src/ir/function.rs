@@ -1,10 +1,7 @@
-use crate::ir::{block::Block, type_::Type};
+use crate::ir::{block::Block, linkage::Linkage, type_::Type};
 use symbol_table::GlobalSymbol;
 
-pub struct Linkage {
-    pub exported: bool,
-}
-
+#[derive(Debug)]
 pub struct Function {
     pub linkage: Linkage,
     pub name: GlobalSymbol,

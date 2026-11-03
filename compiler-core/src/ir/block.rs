@@ -1,5 +1,6 @@
-use crate::ir::{statement::Stmt, instruction::Instr, type_::Type, value::Value};
-use symbol_table::{static_symbol, GlobalSymbol};
+use crate::ir::{instruction::Instr, statement::Stmt, type_::Type, value::Value};
+use std::fmt::{self, Display, Formatter};
+use symbol_table::{GlobalSymbol, static_symbol};
 
 #[derive(Debug)]
 pub struct Block {
@@ -9,7 +10,10 @@ pub struct Block {
 
 impl Block {
     pub fn new(name: GlobalSymbol) -> Self {
-        Self { name, statements: Vec::new() }
+        Self {
+            name,
+            statements: Vec::new(),
+        }
     }
 
     pub fn assign_instr(&mut self, name: Value, type_: Type, instr: Instr) {
@@ -23,6 +27,26 @@ impl Block {
 
 impl Default for Block {
     fn default() -> Self {
-        Self { name: static_symbol!(""), statements: Vec::new() }
+        Self {
+            name: static_symbol!(""),
+            statements: Vec::new(),
+        }
+    }
+}
+
+impl Display for Block {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        let name = if self.name.as_str().is_empty() {
+            "".to_string()
+        } else {
+            format!("@{}\n", self.name)
+        };
+        let stmts = self
+            .statements
+            .iter()
+            .map(|stmt| format!("  {}", stmt))
+            .collect::<Vec<String>>()
+            .join("\n");
+        write!(f, "{}{}", name, stmts)
     }
 }

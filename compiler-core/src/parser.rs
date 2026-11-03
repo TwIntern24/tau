@@ -458,7 +458,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         self.consume(&TokenType::ParenRight)?;
         self.consume(&TokenType::BraceLeft)?;
         let body = self.stmt_list()?;
-        let end = self.consume(&TokenType::BraceLeft)?;
+        let end = self.consume(&TokenType::BraceRight)?;
         let source = start.merge(&end);
         Ok(while_(condition, body, source))
     }

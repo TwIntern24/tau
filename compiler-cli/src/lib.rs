@@ -7,6 +7,7 @@ use tau_core::{
     error::{DynResult, FileCache},
     generator::{Compiler, output},
     process_file,
+    translator::Translator,
 };
 #[cfg(feature = "c")]
 use tau_generator_c::{CCodeGenerator, CHeaderGenerator};
@@ -37,12 +38,17 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
                 CodeGen::C => {
                     let folder = &args.out_dir()?;
                     let compiler = Compiler::new(&ast);
-                    let header_output = output(args.output(), folder, "h");
+                    let header_output = output(folder, args.output(), "h");
                     compiler.compile(CHeaderGenerator, &header_output)?;
-                    let code_output = output(args.output(), folder, "c");
+                    let code_output = output(folder, args.output(), "c");
                     compiler.compile(CCodeGenerator::new(), &code_output)
                 }
                 CodeGen::Cranelift => unimplemented!(),
+                CodeGen::Qbe => {
+                    let output = output(&args.out_dir()?, args.output(), "ir");
+                    let ir = Translator::new().fold_ast(ast);
+                    Ok(fs::write(output, &format!("{}", &ir))?)
+                }
             },
             Err(error) => context.handle(&error),
         }

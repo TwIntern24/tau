@@ -5,6 +5,7 @@ pub enum CodeGen {
     #[cfg(feature = "c")]
     C,
     Cranelift,
+    Qbe,
 }
 
 impl Default for CodeGen {
@@ -15,7 +16,7 @@ impl Default for CodeGen {
 
     #[cfg(not(feature = "c"))]
     fn default() -> Self {
-        Self::Cranelift
+        Self::Qbe
     }
 }
 
@@ -23,11 +24,14 @@ impl FromStr for CodeGen {
     type Err = String;
 
     fn from_str(string: &str) -> Result<Self, Self::Err> {
-        match string {
+        match string.to_lowercase().as_str() {
             #[cfg(feature = "c")]
             "c" => Ok(Self::C),
             "cranelift" => Ok(Self::Cranelift),
-            _ => Err(format!("Could not convert {string} to target")),
+            "qbe" => Ok(Self::Qbe),
+            option => Err(format!(
+                "`{option}` doesn't exist, did you mean c, cranelift or qbe?"
+            )),
         }
     }
 }

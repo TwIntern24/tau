@@ -2,8 +2,8 @@
 // https://docs.rs/qbe/latest/qbe/index.html
 
 pub mod block;
-pub mod environment;
 pub mod data;
+pub mod environment;
 pub mod function;
 pub mod instruction;
 pub mod linkage;

@@ -1,7 +1,7 @@
 use crate::{ast::TypedDecl, error::DynResult};
 use std::path::{Path, PathBuf};
 
-pub fn output(path: &Path, folder: &Path, extension: &str) -> PathBuf {
+pub fn output(folder: &Path, path: &Path, extension: &str) -> PathBuf {
     let mut path_buf = PathBuf::from(folder);
     path_buf.push(path);
     path_buf.set_extension(extension);

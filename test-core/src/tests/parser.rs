@@ -30,7 +30,7 @@ fn parses_from_lexer() {
         break;
       } else {
         return call();
-      };
+      }
     }
   }
   "#;
@@ -96,45 +96,38 @@ fn parses_from_lexer() {
                             Identifier::new(static_symbol!("a"), Source::new(file_id, 182..182)),
                             (),
                         ),
-                        block(
-                            vec![expr_stmt(
-                                if_(
+                        vec![if_(
+                            variable(
+                                Identifier::new(
+                                    static_symbol!("a"),
+                                    Source::new(file_id, 196..196),
+                                ),
+                                (),
+                            ),
+                            vec![break_(Source::new(file_id, 209..221))],
+                            Some(vec![return_(
+                                Some(call(
                                     variable(
                                         Identifier::new(
-                                            static_symbol!("a"),
-                                            Source::new(file_id, 196..196),
+                                            static_symbol!("call"),
+                                            Source::new(file_id, 246..249),
                                         ),
                                         (),
                                     ),
-                                    break_(Source::new(file_id, 209..221)),
-                                    Some(return_(
-                                        call(
-                                            variable(
-                                                Identifier::new(
-                                                    static_symbol!("call"),
-                                                    Source::new(file_id, 246..249),
-                                                ),
-                                                (),
-                                            ),
-                                            vec![],
-                                            Source::new(file_id, 246..251),
-                                            (),
-                                        ),
-                                        Source::new(file_id, 239..259),
-                                    )),
-                                    Source::new(file_id, 193..260),
+                                    vec![],
+                                    Source::new(file_id, 246..251),
                                     (),
-                                ),
-                                Source::new(file_id, 193..266),
-                            )],
-                            Source::new(file_id, 182..270),
-                        ),
-                        Source::new(file_id, 176..270),
+                                )),
+                                Source::new(file_id, 239..259),
+                            )]),
+                            Source::new(file_id, 193..265),
+                        )],
+                        Source::new(file_id, 176..269),
                     ),
                 ],
                 FuncModifiers::new(false, false),
             ),
-            Source::new(file_id, 118..274),
+            Source::new(file_id, 118..273),
         ),
     ];
     assert_eq!(ast.unwrap(), expected)

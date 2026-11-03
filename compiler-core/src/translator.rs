@@ -9,6 +9,7 @@ use crate::{
     },
     ir::{
         block::Block,
+        environment::{Scope, Environment},
         data::{DataDef, DataItem},
         function::Function,
         instruction::{Cmp, Instr},
@@ -22,35 +23,33 @@ use crate::{
     type_::{self, TypeVar, prelude::*},
     uid::UniqueIdGenerator,
 };
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, mem};
 use symbol_table::GlobalSymbol;
 
 /// Translates an AST to IR.
 pub struct Translator {
+    /// Current constructed module.
     module: Module,
-    blocks: Box<Vec<Block>>,
-    stmts: Box<Vec<ir_stmt::Stmt>>,
-    uid: UniqueIdGenerator,
+    
+    /// Current constructed function.
+    function: Function,
+    
+    /// Current constructed block.
+    block: Block,
+    
+    /// Environment for managing substitutions.
+    environment: Environment
 }
 
 impl Translator {
-    fn next_data(&mut self) -> GlobalSymbol {
-        format!("data${}", self.uid.next()).into()
-    }
-
-    fn next_tmp(&mut self) -> Value {
-        Value::Temporary(format!("tmp${}", self.uid.next()).into())
-    }
-
     fn save_temp_instr(&mut self, type_: Type, instr: Instr) -> Value {
-        let value = self.next_tmp();
-        let stmt = ir_stmt::Stmt::Assign(value, type_, instr);
-        self.stmts.push(stmt);
-        value
+        let name = self.environment.new_tmp_var();
+        self.block.assign_instr(name, type_, instr);
+        name
     }
 
     fn save_volatile_instr(&mut self, instr: Instr) {
-        self.stmts.push(ir_stmt::Stmt::Volatile(instr));
+        self.block.volatile_instr(instr);
     }
 }
 
@@ -87,11 +86,10 @@ impl DeclFolder for Translator {
     fn fold_struct(&mut self, struct_: StructDecl, _: Source) -> Self::Output {
         let ident = struct_.name.symbol();
         let align = None;
-        // TODO: fold types
         let items = struct_
             .fields
             .into_iter()
-            .map(|(_, v)| ((&v).into(), 1))
+            .map(|(_, v)| (v.into(), 1))
             .collect();
 
         self.module
@@ -104,28 +102,29 @@ impl DeclFolder for Translator {
     }
 
     fn fold_function(&mut self, func: FuncDecl<Self::Type>, _: Source) -> Self::Output {
-        let linkage = Linkage { exported: true };
-        let name = func.name.symbol();
-        let arguments = func
+        self.function.linkage = Linkage { exported: true };
+        self.function.name = func.name.symbol();
+        self.function.arguments = func
             .params
             .into_iter()
-            .map(|(k, v)| (k.symbol(), (&v).into()))
+            .map(|(k, v)| (k.symbol(), v.into()))
             .collect();
-        let return_type = if func.return_type.is_void() {
+        self.function.return_type = if func.return_type.is_void() {
             None
         } else {
             Some((&func.return_type).into())
         };
-        // TODO: fold statements
-        let blocks = vec![];
+        
+        let func_end = self.environment.new_block_name();
+        self.environment.begin_scope(func_end);
+        for stmt in func.body {
+            self.fold_stmt(stmt);
+        }
+        self.environment.end_scope();
 
-        self.module.functions.push(Function {
-            linkage,
-            name,
-            arguments,
-            return_type,
-            blocks,
-        });
+        self.function.blocks.push(mem::take(&mut self.block));
+
+        self.module.functions.push(mem::take(&mut self.function));
     }
 
     fn fold_const(
@@ -142,26 +141,40 @@ impl StmtFolder for Translator {
     type Type = Typed;
     type Output = ();
 
-    fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, source: Source) -> Self::Output {
-        todo!()
+    fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, _: Source) -> Self::Output {
+        /// This is the name of the next block. We use this as a jmp destination if we need
+        /// to leave the block earlier.
+        let end_label = self.environment.new_block_name();
+        self.environment.begin_scope(end_label);
+        for stmt in statements {
+            self.fold_stmt(stmt);
+        }
+        self.environment.end_scope();
+        self.function.blocks.push(mem::replace(&mut self.block, Block::new(end_label)));
     }
 
     fn fold_let(
         &mut self,
-        name: Identifier,
+        old: Identifier,
         declared: Option<Typed>,
         initializer: Expr<Self::Type>,
-        source: Source,
+        _: Source,
     ) -> Self::Output {
-        todo!()
+        let new = self.environment.new_tmp_var();
+        let type_ = Type::from(declared.unwrap());
+        let instr = self.fold_expr(initializer);
+        self.block.assign_instr(new, type_, Instr::Copy(instr));
+        self.environment.substitude(old.symbol(), new);
     }
 
-    fn fold_return(&mut self, value: Expr<Self::Type>, source: Source) -> Self::Output {
-        todo!()
+    fn fold_return(&mut self, value: Option<Expr<Self::Type>>, _: Source) -> Self::Output {
+        let value = value.map(|v| self.fold_expr(v));
+        self.save_volatile_instr(Instr::Ret(value))
     }
 
-    fn fold_break(&mut self, source: Source) -> Self::Output {
-        todo!()
+    fn fold_break(&mut self, _: Source) -> Self::Output {
+        let label = self.environment.loop_exit_label();
+        self.save_volatile_instr(Instr::Jmp(*label));
     }
 
     fn fold_if(
@@ -171,7 +184,36 @@ impl StmtFolder for Translator {
         else_branch: Option<Vec<Stmt<Self::Type>>>,
         source: Source,
     ) -> Self::Output {
-        todo!()
+        // Define jmp labels
+        let if_block = self.environment.new_block_name();
+        let else_block = self.environment.new_block_name();
+        let end_block = if else_branch.is_some() { self.environment.new_block_name() } else { else_block };
+
+        // Jump if condition != 0
+        let condition = self.fold_expr(condition);
+        self.save_volatile_instr(Instr::Jnz(condition, if_block, if else_branch.is_some() { else_block } else { end_block }));
+
+        // Save if block
+        self.function.blocks.push(mem::replace(&mut self.block, Block::new(if_block)));
+        self.environment.begin_scope(if_block);
+        for stmt in if_branch {
+            self.fold_stmt(stmt);
+        }
+        self.save_volatile_instr(Instr::Jmp(end_block));
+        self.environment.end_scope();
+
+        // Save else block
+        if let Some(else_branch) = else_branch {
+            self.function.blocks.push(mem::replace(&mut self.block, Block::new(else_block)));
+            self.environment.begin_scope(else_block);
+            for stmt in else_branch {
+                self.fold_stmt(stmt);
+            }
+            self.save_volatile_instr(Instr::Jmp(end_block));
+            self.environment.end_scope();
+        }
+
+        self.function.blocks.push(mem::replace(&mut self.block, Block::new(end_block)));
     }
 
     fn fold_while(
@@ -180,11 +222,33 @@ impl StmtFolder for Translator {
         body: Vec<Stmt<Self::Type>>,
         source: Source,
     ) -> Self::Output {
-        todo!()
+        // Define jmp labels
+        let check_block = self.environment.new_block_name();
+        let while_block = self.environment.new_block_name();
+        let end_block = self.environment.new_block_name();
+
+        // Jump if condition != 0
+        self.function.blocks.push(mem::replace(&mut self.block, Block::new(check_block)));
+        let condition = self.fold_expr(condition);
+        self.save_volatile_instr(Instr::Jnz(condition, while_block, end_block));
+
+        // Save while block
+        self.function.blocks.push(mem::replace(&mut self.block, Block::new(while_block)));
+        self.environment.begin_scope(while_block);
+        self.environment.begin_loop(end_block);
+        for stmt in body {
+            self.fold_stmt(stmt);
+        }
+        // Go back to the condition
+        self.save_volatile_instr(Instr::Jmp(check_block));
+        self.environment.end_loop();
+        self.environment.end_scope();
     }
 
     fn fold_expr_stmt(&mut self, expr: Expr<Self::Type>, source: Source) -> Self::Output {
-        todo!()
+        // TODO: We drop the return value here. We drop it EVERY SINGLE TIME.
+        // That's generelly not an issue, but we should eliminate the value in the future.
+        self.fold_expr(expr);
     }
 }
 
@@ -205,7 +269,7 @@ impl ExprFolder for Translator {
             UnaryOp::Not => self.save_temp_instr(type_, Instr::Not(right)),
             UnaryOp::Ref => self.save_temp_instr(type_.clone(), Instr::Load(type_, right)),
             UnaryOp::Deref => {
-                let left = self.next_tmp();
+                let left = self.environment.new_tmp_var();
                 let instr = Instr::Store(type_.clone(), left, right);
                 self.save_temp_instr(type_, instr)
             }
@@ -299,7 +363,12 @@ impl ExprFolder for Translator {
         source: Source,
         type_: Self::Type,
     ) -> Self::Output {
-        todo!()
+        let callee = self.fold_expr(callee);
+        arguments.into_iter().map(|expr| (expr.type_().into(), self.fold_expr(expr))).collect::<Vec<(Type, Value)>>();
+    
+        Option<u64>
+
+        self.save_volatile_instr(Instr::Call())
     }
 
     fn fold_create_array(
@@ -343,7 +412,7 @@ impl ExprFolder for Translator {
             Literal::Bool(value) => Value::Const(*value as u64),
             Literal::String(value) => {
                 let linkage = Linkage { exported: false };
-                let name = self.next_data();
+                let name = self.environment.new_data_name();
                 let align = None;
                 let items = vec![
                     (Type::U8, DataItem::Str(value.into())),
@@ -364,6 +433,6 @@ impl ExprFolder for Translator {
     }
 
     fn fold_variable(&mut self, name: Identifier, _: Self::Type) -> Self::Output {
-        Value::Temporary(name.into())
+        self.environment.resolve(&name.symbol())
     }
 }

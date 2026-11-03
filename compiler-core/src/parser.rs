@@ -193,7 +193,7 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             }
             let value = self.expr()?;
             let source = value.source();
-            body.push(UntypedStmt::new(StmtKind::Return { value }, source));
+            body.push(return_(Some(value), source));
             start.source().merge(source)
         };
         Ok((body, source))
@@ -305,7 +305,11 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
             TokenType::Let => self.stmt_let(false),
             TokenType::Return => {
                 let start = self.advance()?;
-                let expr = self.expr()?;
+                let expr = if self.peek()?.token_type() == &TokenType::Semicolon {
+                    None
+                } else {
+                    Some(self.expr()?)
+                };
                 let end = self.consume(&TokenType::Semicolon)?;
                 let source = start.merge(&end);
                 Ok(return_(expr, source))

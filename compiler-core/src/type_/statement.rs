@@ -49,8 +49,12 @@ impl StmtFolder for SemanticAnalyser {
         Ok(let_(name, Some(type_), initializer, source))
     }
 
-    fn fold_return(&mut self, value: Expr<Self::Type>, source: Source) -> Self::Output {
-        let value = self.infer(value)?;
+    fn fold_return(&mut self, value: Option<Expr<Self::Type>>, source: Source) -> Self::Output {
+        let value = if let Some(value) = value {
+            Some(self.infer(value)?)
+        } else {
+            None
+        };
         Ok(return_(value, source))
     }
 

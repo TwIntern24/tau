@@ -246,9 +246,13 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
         format!("{var_type} {name} = {initializer};").into()
     }
 
-    fn visit_return(&mut self, value: &'a Expr<Self::Type>) -> Self::Output {
-        let value = self.visit_expr(value);
-        format!("return {value};").into()
+    fn visit_return(&mut self, value: &'a Option<Expr<Self::Type>>) -> Self::Output {
+        if let Some(value) = value {
+            let value = self.visit_expr(value);
+            format!("return {value};").into()
+        } else {
+            "return;".to_string().into()
+        }
     }
 
     fn visit_break(&mut self) -> Self::Output {

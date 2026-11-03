@@ -53,7 +53,7 @@ pub fn let_<T>(
     )
 }
 
-pub fn return_<T>(value: Expr<T>, source: Source) -> Stmt<T> {
+pub fn return_<T>(value: Option<Expr<T>>, source: Source) -> Stmt<T> {
     Stmt::new(StmtKind::Return { value }, source)
 }
 

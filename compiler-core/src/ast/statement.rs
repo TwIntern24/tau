@@ -38,7 +38,7 @@ pub enum StmtKind<T> {
         initializer: Expr<T>,
     },
     Return {
-        value: Expr<T>,
+        value: Option<Expr<T>>,
     },
     Break,
     If {
@@ -86,7 +86,7 @@ pub trait StmtVisitor<'a> {
         initializer: &'a Expr<Self::Type>,
     ) -> Self::Output;
 
-    fn visit_return(&mut self, value: &'a Expr<Self::Type>) -> Self::Output;
+    fn visit_return(&mut self, value: &'a Option<Expr<Self::Type>>) -> Self::Output;
 
     fn visit_break(&mut self) -> Self::Output;
 
@@ -141,7 +141,7 @@ pub trait StmtFolder {
         source: Source,
     ) -> Self::Output;
 
-    fn fold_return(&mut self, value: Expr<Self::Type>, source: Source) -> Self::Output;
+    fn fold_return(&mut self, value: Option<Expr<Self::Type>>, source: Source) -> Self::Output;
 
     fn fold_break(&mut self, source: Source) -> Self::Output;
 

@@ -55,12 +55,12 @@ pub enum Literal {
     String(String),
 }
 
-pub struct ExprOrigin<O> {
+pub struct Origin<O> {
     kind: O,
     source: Source,
 }
 
-impl<O> ExprOrigin<O> {
+impl<O> Origin<O> {
     pub fn new(kind: O, source: Source) -> Self {
         Self { kind, source }
     }
@@ -70,29 +70,29 @@ impl<O> ExprOrigin<O> {
     }
 }
 
-impl<O> Location for ExprOrigin<O> {
+impl<O> Location for Origin<O> {
     fn source(&self) -> Source {
         self.source
     }
 }
 
-impl<O> PartialEq for ExprOrigin<O>
+impl<O> PartialEq for Origin<O>
 where
     O: PartialEq,
 {
-    fn eq(&self, other: &ExprOrigin<O>) -> bool {
+    fn eq(&self, other: &Origin<O>) -> bool {
         &self.kind == &other.kind && &self.source == &other.source
     }
 }
 
-impl<O> Debug for ExprOrigin<O>
+impl<O> Debug for Origin<O>
 where
     O: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ExprOrigin {{ kind: {:?}, source: {:?} }}",
+            "Origin {{ kind: {:?}, source: {:?} }}",
             self.kind, self.source
         )
     }

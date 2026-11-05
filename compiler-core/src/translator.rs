@@ -5,139 +5,202 @@ use crate::{
         declaration::{DeclFolder, FuncDecl, StructDecl},
         expression::{Expr, ExprFolder},
         identifier::Identifier,
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        lookup::{AdlLookup, CallLookup, Lookup, VarLookup},
+        origin::{BinaryOp, Literal, Origin, UnaryOp},
         statement::{Stmt, StmtFolder},
     },
     ir::{
-        block::Block,
-        data::{DataDef, DataItem},
-        environment::{Environment, Scope},
-        function::Function,
-        instruction::{Cmp, Instr},
+        aggregate::Aggregate,
+        data::DataItem,
+        emitter::Emitter,
+        instruction::Cmp,
         linkage::Linkage,
-        module::Module,
-        statement as ir_stmt,
-        type_::{Type, TypeDef},
-        value::Value,
+        value::{Value, ValueKind},
     },
     lexer::Source,
     type_::{self, TypeVar, prelude::*},
     uid::UniqueIdGenerator,
 };
-use std::{mem, ops::Deref, sync::Arc};
+use std::{collections::HashMap, mem, ops::Deref, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
 
+pub type Scope = HashMap<GlobalSymbol, Value>;
+
 /// Translates an AST to IR.
-pub struct Translator {
-    /// Current constructed module.
-    module: Module,
+pub struct Translator<'a, E: Emitter> {
+    emitter: &'a mut E,
 
-    /// Current constructed function.
-    function: Function,
+    /// Values defined in the current function together with the name of the block.
+    scopes: Vec<Scope>,
 
-    /// Current constructed block.
-    block: Block,
+    /// End labels for each block. They are the jmp destination for the break statement.
+    loop_labels: Vec<GlobalSymbol>,
 
-    /// Environment for managing substitutions.
-    environment: Environment,
+    data_counter: usize,
+    instr_counter: usize,
+    block_counter: usize,
 }
 
-impl Translator {
-    pub fn new() -> Self {
+impl<'a, E: Emitter> Translator<'a, E> {
+    pub fn new(emitter: &'a mut E) -> Self {
         Self {
-            module: Module::new(),
-            function: Function::default(),
-            block: Block::default(),
-            environment: Environment::new(),
+            emitter,
+            scopes: Vec::new(),
+            loop_labels: Vec::new(),
+            data_counter: 0,
+            instr_counter: 0,
+            block_counter: 0,
         }
     }
 
-    pub fn fold_ast(mut self, ast: Vec<TypedDecl>) -> Module {
+    pub fn fold_ast(mut self, ast: Vec<TypedDecl>) {
         for decl in ast {
             self.fold_decl(decl);
         }
-        self.module
     }
 
-    fn fold_type(&self, type_: Typed) -> Type {
-        match type_.as_ref() {
-            type_::Type::Fn { .. } => panic!(),
-            type_::Type::Named { name, .. } => match name.as_str() {
-                _ => self.environment.resolve_type(name).clone(),
-            },
-            type_::Type::Var { type_ } => match type_.borrow().deref() {
-                TypeVar::Unbound { .. } | TypeVar::Generic { .. } => panic!(),
-                TypeVar::Link { type_ } => self.fold_type(type_.clone()),
-            },
-            type_::Type::Ptr { type_, .. } | type_::Type::Array { type_, .. } => {
-                self.fold_type(type_.clone())
+    fn substitude(&mut self, old: GlobalSymbol, new: Value) {
+        self.scopes
+            .last_mut()
+            .expect("scopes not empty")
+            .insert(old, new);
+    }
+
+    fn resolve_var(&self, name: &GlobalSymbol, type_: Typed) -> Value {
+        for scope in self.scopes.iter().rev() {
+            if let Some(value) = scope.get(name) {
+                return value.clone();
             }
         }
+
+        Value::new(ValueKind::Global(*name), type_)
     }
 
-    fn save_temp_instr(&mut self, type_: Type, instr: Instr) -> Value {
-        let name = self.environment.new_tmp_var();
-        self.block.assign_instr(name, type_, instr);
+    fn begin_scope(&mut self) {
+        self.scopes.push(Scope::new());
+    }
+
+    fn end_scope(&mut self) {
+        self.scopes
+            .pop()
+            .expect("same number of open scopes as closed scopes");
+    }
+
+    fn begin_loop(&mut self, exit_label: GlobalSymbol) {
+        self.loop_labels.push(exit_label);
+    }
+
+    fn end_loop(&mut self) {
+        self.loop_labels
+            .pop()
+            .expect("same number of open scopes as closed scopes");
+    }
+
+    fn loop_exit_label(&self) -> &GlobalSymbol {
+        self.loop_labels.last().expect("loop label exists")
+    }
+
+    fn reset_counters(&mut self) {
+        self.instr_counter = 0;
+        self.block_counter = 0;
+    }
+
+    fn auto_load(&mut self, value: Value) -> Value {
+        if let ValueKind::AutoLoad(name) = value.kind() {
+            let load = self.emitter.emit_instr_load(&value);
+            return self.save_temp_instr(value.type_().clone(), load);
+        }
+        value
+    }
+
+    fn save_var_instr(&mut self, name: GlobalSymbol, type_: Typed, init: Value) -> Value {
+        let name = GlobalSymbol::from(format!("{}.addr", name));
+        let dest = if type_.as_ref().is_aggregate() {
+            Value::new(ValueKind::Temporary(name), type_.clone())
+        } else {
+            Value::new(ValueKind::AutoLoad(name), type_.clone())
+        };
+        let alloc = self.emitter.emit_instr_alloca(type_.clone(), None);
+        self.emitter.emit_stmt_assign(&dest, alloc);
+        self.emitter.emit_stmt_store(&dest, &init);
+        dest
+    }
+
+    fn save_temp_instr(&mut self, type_: Typed, instr: E::Instr) -> Value {
+        let name = self.new_instr_name();
+        let value = Value::new(ValueKind::Temporary(name), type_);
+        self.emitter.emit_stmt_assign(&value, instr);
+        value
+    }
+
+    fn new_instr_name(&mut self) -> GlobalSymbol {
+        let name = format!("ti{}", self.instr_counter).into();
+        self.instr_counter += 1;
         name
     }
 
-    fn save_volatile_instr(&mut self, instr: Instr) {
-        self.block.volatile_instr(instr);
+    fn new_data_name(&mut self) -> GlobalSymbol {
+        let name = format!("td{}", self.data_counter).into();
+        self.data_counter += 1;
+        name
+    }
+
+    fn new_block_name(&mut self) -> GlobalSymbol {
+        let name = format!("tb{}", self.block_counter).into();
+        self.block_counter += 1;
+        name
     }
 }
 
-impl DeclFolder for Translator {
+impl<'a, E: Emitter> DeclFolder for Translator<'a, E> {
     type Type = Typed;
     type Output = ();
 
     fn fold_import(&mut self, _: Vec<Identifier>, _: Source) -> Self::Output {}
 
     fn fold_struct(&mut self, struct_: StructDecl, _: Source) -> Self::Output {
-        let ident = struct_.name.symbol();
-        let align = None;
-        let items = struct_
-            .fields
-            .into_iter()
-            .map(|(_, v)| (self.fold_type(v), 1))
-            .collect();
-
-        let type_ = Type::Aggregate(Arc::new(TypeDef::Regular {
-            ident,
-            align,
-            items,
-        }));
-        self.environment
-            .declare(struct_.name.symbol(), type_.clone());
-        self.module.types.push(type_);
+        let name = struct_.name.symbol();
+        let items = struct_.fields.into_iter().map(|(_, v)| v.clone()).collect();
+        let aggregate = Aggregate::Struct { name, items };
+        self.emitter.emit_type_def(aggregate);
     }
 
     fn fold_function(&mut self, func: FuncDecl<Self::Type>, _: Source) -> Self::Output {
-        self.function.linkage = Linkage { exported: true };
-        self.function.name = func.name.symbol();
-        self.function.return_type = if func.return_type.is_void() {
+        if func.modifiers.is_extern {
+            return;
+        }
+
+        let linkage = Linkage { exported: true };
+        let name = func.name.symbol();
+        let args = func
+            .params
+            .iter()
+            .map(|(k, v)| (k.symbol(), v.clone()))
+            .collect();
+        let return_type = if func.return_type.is_void() {
             None
         } else {
-            Some(self.fold_type(func.return_type))
+            Some(func.return_type)
         };
 
-        let func_end = self.environment.new_block_name();
-        self.environment.begin_scope(func_end);
+        self.emitter.begin_func(linkage, name, args, return_type);
+        self.emitter.begin_block(static_symbol!(""));
+        self.begin_scope();
+
         for (old, type_) in func.params {
-            let type_ = self.fold_type(type_);
-            let new = self.environment.new_instr_name();
-            self.environment
-                .substitude(old.symbol(), Value::Temporary(new));
-            self.function.arguments.push((new, type_));
+            let old = old.symbol();
+            let value = Value::new(ValueKind::Temporary(old), type_.clone());
+            let new = self.save_var_instr(old, type_, value);
+            self.substitude(old, new);
         }
         for stmt in func.body {
             self.fold_stmt(stmt);
         }
-        self.environment.end_scope();
-        self.environment.reset_counters();
 
-        self.function.blocks.push(mem::take(&mut self.block));
-
-        self.module.functions.push(mem::take(&mut self.function));
+        self.end_scope();
+        self.emitter.end_block();
+        self.emitter.end_func();
+        self.reset_counters();
     }
 
     fn fold_const(
@@ -150,43 +213,47 @@ impl DeclFolder for Translator {
     }
 }
 
-impl StmtFolder for Translator {
+impl<'a, E: Emitter> StmtFolder for Translator<'a, E> {
     type Type = Typed;
     type Output = ();
 
     fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, _: Source) -> Self::Output {
         /// This is the name of the next block. We use this as a jmp destination if we need
         /// to leave the block earlier.
-        let end_label = self.environment.new_block_name();
-        self.environment.begin_scope(end_label);
+        let end_label = self.new_block_name();
+        self.begin_scope();
         for stmt in statements {
             self.fold_stmt(stmt);
         }
-        self.environment.end_scope();
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(end_label)));
+        self.end_scope();
+        self.emitter.end_block();
+        self.emitter.begin_block(end_label);
     }
 
     fn fold_let(
         &mut self,
-        old: Identifier,
+        name: Identifier,
         declared: Option<Typed>,
         initializer: Expr<Self::Type>,
         _: Source,
     ) -> Self::Output {
-        let new = self.fold_expr(initializer);
-        self.environment.substitude(old.symbol(), new);
+        let type_ = declared.expect("type infered");
+        let name = name.symbol();
+        let init = self.fold_expr(initializer);
+        let alloc = self.save_var_instr(name, type_, init);
+        self.substitude(name, alloc)
     }
 
     fn fold_return(&mut self, value: Option<Expr<Self::Type>>, _: Source) -> Self::Output {
         let value = value.map(|v| self.fold_expr(v));
-        self.save_volatile_instr(Instr::Ret(value))
+        let ret = self.emitter.emit_instr_ret(value);
+        self.emitter.emit_stmt_volatile(ret);
     }
 
     fn fold_break(&mut self, _: Source) -> Self::Output {
-        let label = self.environment.loop_exit_label();
-        self.save_volatile_instr(Instr::Jmp(*label));
+        let label = self.loop_exit_label();
+        let jmp_end = self.emitter.emit_instr_jmp(*label);
+        self.emitter.emit_stmt_volatile(jmp_end);
     }
 
     fn fold_if(
@@ -197,17 +264,17 @@ impl StmtFolder for Translator {
         source: Source,
     ) -> Self::Output {
         // Define jmp labels
-        let if_block = self.environment.new_block_name();
-        let else_block = self.environment.new_block_name();
+        let if_block = self.new_block_name();
+        let else_block = self.new_block_name();
         let end_block = if else_branch.is_some() {
-            self.environment.new_block_name()
+            self.new_block_name()
         } else {
             else_block
         };
 
         // Jump if condition != 0
         let condition = self.fold_expr(condition);
-        self.save_volatile_instr(Instr::Jnz(
+        let jmp_cond = self.emitter.emit_instr_jnz(
             condition,
             if_block,
             if else_branch.is_some() {
@@ -215,35 +282,37 @@ impl StmtFolder for Translator {
             } else {
                 end_block
             },
-        ));
+        );
+        self.emitter.emit_stmt_volatile(jmp_cond);
 
         // Save if block
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(if_block)));
-        self.environment.begin_scope(if_block);
+        self.emitter.end_block();
+        self.emitter.begin_block(if_block);
+
+        self.begin_scope();
         for stmt in if_branch {
             self.fold_stmt(stmt);
         }
-        self.save_volatile_instr(Instr::Jmp(end_block));
-        self.environment.end_scope();
+        let jmp_end = self.emitter.emit_instr_jmp(end_block);
+        self.emitter.emit_stmt_volatile(jmp_end);
+        self.end_scope();
 
         // Save else block
         if let Some(else_branch) = else_branch {
-            self.function
-                .blocks
-                .push(mem::replace(&mut self.block, Block::new(else_block)));
-            self.environment.begin_scope(else_block);
+            self.emitter.end_block();
+            self.emitter.begin_block(else_block);
+
+            self.begin_scope();
             for stmt in else_branch {
                 self.fold_stmt(stmt);
             }
-            self.save_volatile_instr(Instr::Jmp(end_block));
-            self.environment.end_scope();
+            let jmp_end = self.emitter.emit_instr_jmp(end_block);
+            self.emitter.emit_stmt_volatile(jmp_end);
+            self.end_scope();
         }
 
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(end_block)));
+        self.emitter.end_block();
+        self.emitter.begin_block(end_block);
     }
 
     fn fold_while(
@@ -253,120 +322,139 @@ impl StmtFolder for Translator {
         source: Source,
     ) -> Self::Output {
         // Define jmp labels
-        let check_block = self.environment.new_block_name();
-        let while_block = self.environment.new_block_name();
-        let end_block = self.environment.new_block_name();
+        let check_block = self.new_block_name();
+        let while_block = self.new_block_name();
+        let end_block = self.new_block_name();
 
         // Jump if condition != 0
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(check_block)));
+        self.emitter.end_block();
+        self.emitter.begin_block(check_block);
         let condition = self.fold_expr(condition);
-        self.save_volatile_instr(Instr::Jnz(condition, while_block, end_block));
+        let jmp_loop = self
+            .emitter
+            .emit_instr_jnz(condition, while_block, end_block);
+        self.emitter.emit_stmt_volatile(jmp_loop);
 
         // Save while block
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(while_block)));
-        self.environment.begin_scope(while_block);
-        self.environment.begin_loop(end_block);
+        self.emitter.begin_block(while_block);
+        self.begin_scope();
+        self.begin_loop(end_block);
         for stmt in body {
             self.fold_stmt(stmt);
         }
+
         // Go back to the condition
-        self.save_volatile_instr(Instr::Jmp(check_block));
-        self.environment.end_loop();
-        self.environment.end_scope();
+        self.emitter.emit_stmt_jmp(check_block);
+        self.end_loop();
+        self.end_scope();
+        self.emitter.end_block();
+
+        // Save end block
+        self.emitter.begin_block(end_block);
     }
 
     fn fold_expr_stmt(&mut self, expr: Expr<Self::Type>, source: Source) -> Self::Output {
-        // TODO: We drop the return value here. We drop it EVERY SINGLE TIME.
-        // That's generelly not an issue, but we should eliminate the value in the future.
+        // Drop return value is fine.
         self.fold_expr(expr);
     }
 }
 
-impl ExprFolder for Translator {
+impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
     type Type = Typed;
     type Output = Value;
 
     fn fold_unary(
         &mut self,
-        operator: ExprOrigin<UnaryOp>,
+        operator: Origin<UnaryOp>,
         right: Expr<Self::Type>,
         type_: Self::Type,
     ) -> Self::Output {
-        let type_ = self.fold_type(type_);
         let right = self.fold_expr(right);
-        match operator.kind() {
-            UnaryOp::Neg => self.save_temp_instr(type_, Instr::Neg(right)),
-            UnaryOp::Not => self.save_temp_instr(type_, Instr::Not(right)),
-            UnaryOp::Ref => self.save_temp_instr(type_.clone(), Instr::Load(type_, right)),
-            UnaryOp::Deref => {
-                let left = self.environment.new_tmp_var();
-                let instr = Instr::Store(type_.clone(), left, right);
-                self.save_temp_instr(type_, instr)
+        let right = self.auto_load(right);
+        let instr = match operator.kind() {
+            UnaryOp::Neg => self.emitter.emit_instr_neg(right),
+            UnaryOp::Not => self.emitter.emit_instr_not(right),
+            UnaryOp::Ref => {
+                todo!()
             }
-        }
+            UnaryOp::Deref => {
+                todo!()
+            }
+        };
+        self.save_temp_instr(type_, instr)
     }
 
     fn fold_binary(
         &mut self,
         left: Expr<Self::Type>,
-        operator: ExprOrigin<BinaryOp>,
+        operator: Origin<BinaryOp>,
         right: Expr<Self::Type>,
         type_: Self::Type,
     ) -> Self::Output {
-        let type_ = self.fold_type(type_);
         let left = self.fold_expr(left);
         let right = self.fold_expr(right);
+        let right = self.auto_load(right);
+
         match operator.kind() {
-            BinaryOp::Add => self.save_temp_instr(type_, Instr::Add(left, right)),
-            BinaryOp::Sub => self.save_temp_instr(type_, Instr::Sub(left, right)),
-            BinaryOp::Mul => self.save_temp_instr(type_, Instr::Mul(left, right)),
-            BinaryOp::Div => self.save_temp_instr(type_, Instr::Div(left, right)),
-            BinaryOp::Mod => self.save_temp_instr(type_, Instr::Mod(left, right)),
+            op @ (BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Div
+            | BinaryOp::Mod
+            | BinaryOp::And
+            | BinaryOp::Or) => {
+                let left = self.auto_load(left);
+                let comp = match op {
+                    BinaryOp::Add => self.emitter.emit_instr_add(left, right),
+                    BinaryOp::Sub => self.emitter.emit_instr_sub(left, right),
+                    BinaryOp::Mul => self.emitter.emit_instr_mul(left, right),
+                    BinaryOp::Div => self.emitter.emit_instr_div(left, right),
+                    BinaryOp::Mod => self.emitter.emit_instr_mod(left, right),
+                    BinaryOp::And => self.emitter.emit_instr_and(left, right),
+                    BinaryOp::Or => self.emitter.emit_instr_or(left, right),
+                    _ => unreachable!(),
+                };
+                self.save_temp_instr(type_, comp)
+            }
+
             BinaryOp::Set => {
-                self.save_volatile_instr(Instr::Mov(left, right));
-                left
+                let store = self.emitter.emit_instr_store(&left, &right);
+                self.emitter.emit_stmt_volatile(store);
+                right
             }
-            BinaryOp::SetAdd => {
-                self.save_volatile_instr(Instr::Add(left, right));
-                left
+            op @ (BinaryOp::SetAdd | BinaryOp::SetSub | BinaryOp::SetMul | BinaryOp::SetDiv) => {
+                let load = self.emitter.emit_instr_load(&left);
+                let old_value = self.save_temp_instr(type_.clone(), load);
+                let comp = match op {
+                    BinaryOp::SetAdd => self.emitter.emit_instr_add(old_value, right),
+                    BinaryOp::SetSub => self.emitter.emit_instr_sub(old_value, right),
+                    BinaryOp::SetMul => self.emitter.emit_instr_mul(old_value, right),
+                    BinaryOp::SetDiv => self.emitter.emit_instr_div(old_value, right),
+                    _ => unreachable!(),
+                };
+                let new_value = self.save_temp_instr(type_.clone(), comp);
+                let store = self.emitter.emit_instr_store(&left, &new_value);
+                self.emitter.emit_stmt_volatile(store);
+                new_value
             }
-            BinaryOp::SetSub => {
-                self.save_volatile_instr(Instr::Sub(left, right));
-                left
-            }
-            BinaryOp::SetMul => {
-                self.save_volatile_instr(Instr::Mul(left, right));
-                left
-            }
-            BinaryOp::SetDiv => {
-                self.save_volatile_instr(Instr::Div(left, right));
-                left
-            }
-
-            BinaryOp::And => self.save_temp_instr(Type::Bool, Instr::And(left, right)),
-            BinaryOp::Or => self.save_temp_instr(Type::Bool, Instr::Or(left, right)),
-
-            BinaryOp::Eq => {
-                self.save_temp_instr(Type::Bool, Instr::Cmp(type_, Cmp::Eq, left, right))
-            }
-            BinaryOp::Neq => {
-                self.save_temp_instr(Type::Bool, Instr::Cmp(type_, Cmp::Ne, left, right))
-            }
-            BinaryOp::Low => {
-                self.save_temp_instr(Type::Bool, Instr::Cmp(type_, Cmp::Slt, left, right))
-            }
-            BinaryOp::Leq => {
-                self.save_temp_instr(Type::Bool, Instr::Cmp(type_, Cmp::Sle, left, right))
-            }
-            BinaryOp::Gre => {
-                self.save_temp_instr(Type::Bool, Instr::Cmp(type_, Cmp::Sgt, left, right))
-            }
-            BinaryOp::Geq => {
-                self.save_temp_instr(Type::Bool, Instr::Cmp(type_, Cmp::Sge, left, right))
+            op @ (BinaryOp::Eq
+            | BinaryOp::Neq
+            | BinaryOp::Low
+            | BinaryOp::Leq
+            | BinaryOp::Gre
+            | BinaryOp::Geq) => {
+                let left = self.auto_load(left);
+                let cmp = match op {
+                    BinaryOp::Eq => Cmp::Eq,
+                    BinaryOp::Neq => Cmp::Neq,
+                    BinaryOp::Low => Cmp::Lt,
+                    BinaryOp::Leq => Cmp::Leq,
+                    BinaryOp::Gre => Cmp::Gt,
+                    BinaryOp::Geq => Cmp::Geq,
+                    _ => unreachable!(),
+                };
+                let cmp = self.emitter.emit_instr_cmp(cmp, left, right);
+                self.save_temp_instr(type_, cmp)
             }
         }
     }
@@ -377,13 +465,13 @@ impl ExprFolder for Translator {
         right: Identifier,
         type_: Self::Type,
     ) -> Self::Output {
-        let struct_type = self.fold_type(left.type_().clone());
-        // TODO: calculate offset from type
-        let offset = 0;
+        // TODO: find offset
+        let address_type = left.type_().clone();
         let left = self.fold_expr(left);
-        let offset = self.save_temp_instr(struct_type, Instr::Add(left, Value::Const(offset)));
-        let type_ = self.fold_type(type_);
-        self.save_temp_instr(type_.clone(), Instr::Load(type_, offset))
+        let add = self
+            .emitter
+            .emit_instr_add(left, Value::new(ValueKind::Const(0), address_type));
+        self.save_temp_instr(type_, add)
     }
 
     fn fold_index_array(
@@ -393,28 +481,37 @@ impl ExprFolder for Translator {
         source: Source,
         type_: Self::Type,
     ) -> Self::Output {
-        todo!()
+        let address_type = object.type_().clone();
+        let (_, size) = self.emitter.layout_hint(&type_);
+        let object = self.fold_expr(object);
+        let index_type = index.type_().clone();
+        let index = self.fold_expr(index);
+        let offset = self
+            .emitter
+            .emit_instr_mul(index, Value::new(ValueKind::Const(size), index_type));
+        let offset = self.save_temp_instr(address_type.clone(), offset);
+        let add = self.emitter.emit_instr_add(object, offset);
+        self.save_temp_instr(address_type, add)
     }
 
     fn fold_call(
         &mut self,
-        callee: Expr<Self::Type>,
+        lookup: CallLookup<Self::Type>,
         arguments: Vec<Expr<Self::Type>>,
         source: Source,
         type_: Self::Type,
     ) -> Self::Output {
-        let callee = self.fold_expr(callee);
         let arguments = arguments
             .into_iter()
-            .map(|expr| (self.fold_type(expr.type_().clone()), self.fold_expr(expr)))
-            .collect::<Vec<(Type, Value)>>();
-
-        // TODO: refactor ast to get function name
-        let function_name = static_symbol!("unimplemented");
-        self.save_temp_instr(
-            self.fold_type(type_),
-            Instr::Call(function_name, arguments, None),
-        )
+            .map(|arg| {
+                let adr = self.fold_expr(arg);
+                self.auto_load(adr)
+            })
+            .collect();
+        let return_ = self
+            .emitter
+            .emit_instr_call(lookup.name().symbol(), arguments);
+        self.save_temp_instr(type_, return_)
     }
 
     fn fold_create_array(
@@ -423,7 +520,22 @@ impl ExprFolder for Translator {
         source: Source,
         type_: Typed,
     ) -> Self::Output {
-        todo!()
+        let alloc = self.emitter.emit_instr_alloca(type_.clone(), None);
+        let alloc = self.save_temp_instr(type_.clone(), alloc);
+        let mut offset = 0;
+        for init in fields {
+            let (align, size) = self.emitter.layout_hint(init.type_());
+            let add = self.emitter.emit_instr_add(
+                alloc.clone(),
+                Value::new(ValueKind::Const(offset), alloc.type_().clone()),
+            );
+            let location = self.save_temp_instr(alloc.type_().clone(), add);
+            let init = self.fold_expr(init);
+            let store = self.emitter.emit_instr_store(&location, &init);
+            self.emitter.emit_stmt_volatile(store);
+            offset += size;
+        }
+        alloc
     }
 
     fn fold_create_struct(
@@ -432,16 +544,20 @@ impl ExprFolder for Translator {
         _: Source,
         type_: Typed,
     ) -> Self::Output {
-        let type_ = self.fold_type(type_);
-        let size = Type::sizeof(&type_);
-        let alloc = self.save_temp_instr(type_, Instr::Alloc8(size));
+        let alloc = self.emitter.emit_instr_alloca(type_.clone(), None);
+        let alloc = self.save_temp_instr(type_.clone(), alloc);
         let mut offset = 0;
-        for (_, expr) in fields {
-            let type_ = self.fold_type(expr.type_().clone());
-            let expr = self.fold_expr(expr);
-            let size = Type::sizeof(&type_);
-            let pos = self.save_temp_instr(type_.clone(), Instr::Add(alloc, Value::Const(offset)));
-            self.save_volatile_instr(Instr::Store(type_, alloc, expr));
+        for (_, init) in fields {
+            let (align, size) = self.emitter.layout_hint(init.type_());
+            let add = self.emitter.emit_instr_add(
+                alloc.clone(),
+                Value::new(ValueKind::Const(offset), alloc.type_().clone()),
+            );
+            let location = self.save_temp_instr(alloc.type_().clone(), add);
+            let init = self.fold_expr(init);
+            let init = self.auto_load(init);
+            let store = self.emitter.emit_instr_store(&location, &init);
+            self.emitter.emit_stmt_volatile(store);
             offset += size;
         }
         alloc
@@ -455,70 +571,63 @@ impl ExprFolder for Translator {
         _: Source,
         type_: Self::Type,
     ) -> Self::Output {
-        let if_block = self.environment.new_block_name();
-        let else_block = self.environment.new_block_name();
-        let end_block = self.environment.new_block_name();
+        let if_block = self.new_block_name();
+        let else_block = self.new_block_name();
+        let end_block = self.new_block_name();
 
         let condition = self.fold_expr(condition);
-        self.save_volatile_instr(Instr::Jnz(condition, if_block, else_block));
+        let con_jmp = self.emitter.emit_instr_jnz(condition, if_block, else_block);
+        self.emitter.emit_stmt_volatile(con_jmp);
 
         // Save if block
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(if_block)));
-        self.environment.begin_scope(if_block);
+        self.emitter.begin_block(if_block);
+        self.begin_scope();
         let if_branch = self.fold_expr(if_branch);
-        self.save_volatile_instr(Instr::Jmp(end_block));
-        self.environment.end_scope();
+        self.emitter.emit_stmt_jmp(end_block);
+        self.end_scope();
+        self.emitter.end_block();
 
         // Save else block
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(else_block)));
-        self.environment.begin_scope(else_block);
+        self.emitter.begin_block(else_block);
+        self.begin_scope();
         let else_branch = self.fold_expr(else_branch);
-        self.save_volatile_instr(Instr::Jmp(end_block));
-        self.environment.end_scope();
+        let else_jmp = self.emitter.emit_instr_jmp(end_block);
+        self.emitter.emit_stmt_volatile(else_jmp);
+        self.end_scope();
+        self.emitter.end_block();
 
         // Phi instruction
-        self.function
-            .blocks
-            .push(mem::replace(&mut self.block, Block::new(end_block)));
-        let type_ = self.fold_type(type_);
-        self.save_temp_instr(
-            type_,
-            Instr::Phi(vec![(if_block, if_branch), (else_block, else_branch)]),
-        )
+        self.emitter.begin_block(end_block);
+        let phi = self
+            .emitter
+            .emit_instr_phi(vec![(if_block, if_branch), (else_block, else_branch)]);
+        self.save_temp_instr(type_, phi)
     }
 
-    fn fold_literal(&mut self, value: ExprOrigin<Literal>, type_: Self::Type) -> Self::Output {
-        match value.kind() {
-            Literal::Int(value) => Value::Const(*value as u64),
-            Literal::Float(value) => Value::Const((*value).to_bits()),
-            Literal::Bool(value) => Value::Const(*value as u64),
+    fn fold_literal(&mut self, value: Origin<Literal>, type_: Self::Type) -> Self::Output {
+        let kind = match value.kind() {
+            Literal::Int(value) => ValueKind::Const(*value as u64),
+            Literal::Float(value) => ValueKind::Const((*value).to_bits()),
+            Literal::Bool(value) => ValueKind::Const(*value as u64),
             Literal::String(value) => {
                 let linkage = Linkage { exported: false };
-                let name = self.environment.new_data_name();
-                let align = None;
+                let name = self.new_data_name();
                 let items = vec![
-                    (Type::U8, DataItem::Str(value.into())),
+                    (i8(), DataItem::Str(value.into())),
                     // C ABI strings are null terminated.
-                    (Type::U8, DataItem::Const(0)),
+                    (i8(), DataItem::Const(0)),
                 ];
 
-                self.module.data.push(DataDef {
-                    linkage,
-                    name,
-                    align,
-                    items,
-                });
+                self.emitter.emit_data_def(linkage, name, items);
 
-                Value::Global(name)
+                ValueKind::Global(name)
             }
-        }
+        };
+        Value::new(kind, type_)
     }
 
-    fn fold_variable(&mut self, name: Identifier, _: Self::Type) -> Self::Output {
-        self.environment.resolve_var(&name.symbol())
+    fn fold_variable(&mut self, lookup: VarLookup, type_: Self::Type) -> Self::Output {
+        // TODO: resolve qualified lookup
+        self.resolve_var(&lookup.name().symbol(), type_)
     }
 }

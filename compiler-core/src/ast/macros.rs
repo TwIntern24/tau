@@ -1,4 +1,4 @@
-#[macro_export]
+/*#[macro_export]
 macro_rules! fold_vec {
     ($folder:expr, $func:ident, $unfolded:expr) => {{
         let mut folded = Vec::with_capacity($unfolded.len());
@@ -7,4 +7,4 @@ macro_rules! fold_vec {
         }
         Ok(folded)
     }};
-}
+}*/

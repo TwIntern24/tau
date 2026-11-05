@@ -168,8 +168,10 @@ version = "0.1.0"
 dependencies = [
  "bpaf",
  "codespan-reporting",
+ "symbol_table",
  "tau-core",
  "tau-generator-c",
+ "tau-generator-qbe",
 ]
 
 [[package]]
@@ -192,6 +194,7 @@ name = "tau-generator-qbe"
 version = "0.1.0"
 dependencies = [
  "qbe",
+ "symbol_table",
  "tau-core",
 ]
 

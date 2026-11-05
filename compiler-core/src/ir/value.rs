@@ -1,19 +1,30 @@
-use std::fmt::{self, Display, Formatter};
+use crate::type_::Typed;
 use symbol_table::GlobalSymbol;
 
-#[derive(Copy, Clone, Debug)]
-pub enum Value {
-    Temporary(GlobalSymbol),
-    Global(GlobalSymbol),
-    Const(u64),
+#[derive(Clone, Debug)]
+pub struct Value {
+    kind: ValueKind,
+    type_: Typed,
 }
 
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Temporary(name) => write!(f, "%{}", name),
-            Self::Global(name) => write!(f, "${}", name),
-            Self::Const(value) => write!(f, "{}", value),
-        }
+impl Value {
+    pub fn new(kind: ValueKind, type_: Typed) -> Self {
+        Self { kind, type_ }
     }
+
+    pub fn kind(&self) -> &ValueKind {
+        &self.kind
+    }
+
+    pub fn type_(&self) -> &Typed {
+        &self.type_
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum ValueKind {
+    Temporary(GlobalSymbol),
+    Global(GlobalSymbol),
+    AutoLoad(GlobalSymbol),
+    Const(u64),
 }

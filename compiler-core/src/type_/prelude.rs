@@ -24,6 +24,14 @@ pub fn bool() -> Typed {
     native(static_symbol!("bool"))
 }
 
+pub fn u8() -> Typed {
+    native(static_symbol!("u8"))
+}
+
+pub fn i8() -> Typed {
+    native(static_symbol!("i8"))
+}
+
 pub fn void() -> Typed {
     native(static_symbol!("void"))
 }

@@ -1,10 +1,12 @@
 use crate::{
     ast::{
-        Location, Typed, UntypedExpr,
+        Location, UntypedExpr,
         identifier::Identifier,
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        lookup::{CallLookup, VarLookup},
+        origin::{BinaryOp, Literal, Origin, UnaryOp},
     },
     lexer::Source,
+    type_::{Typed, Untyped},
 };
 use std::boxed::Box;
 
@@ -64,7 +66,7 @@ impl<T> Location for Expr<T> {
                 ..
             } => start.source().merge(end.source()),
             ExprKind::Literal { literal, .. } => literal.source(),
-            ExprKind::Variable { name, .. } => name.source(),
+            ExprKind::Variable { lookup, .. } => lookup.source(),
         }
     }
 }
@@ -73,20 +75,20 @@ impl<T> Location for Expr<T> {
 pub enum ExprKind<T> {
     Unary {
         // -right
-        operator: ExprOrigin<UnaryOp>,
+        operator: Origin<UnaryOp>,
         right: Box<Expr<T>>,
         type_: T,
     },
     Binary {
         // left + right
         left: Box<Expr<T>>,
-        operator: ExprOrigin<BinaryOp>,
+        operator: Origin<BinaryOp>,
         right: Box<Expr<T>>,
         type_: T,
     },
     Call {
-        // callee(..arguments)
-        callee: Box<Expr<T>>,
+        // lookup(..arguments)
+        lookup: CallLookup<T>,
         arguments: Vec<Expr<T>>,
         source: Source,
         type_: T,
@@ -122,11 +124,11 @@ pub enum ExprKind<T> {
         type_: T,
     },
     Literal {
-        literal: ExprOrigin<Literal>,
+        literal: Origin<Literal>,
         type_: T,
     },
     Variable {
-        name: Identifier,
+        lookup: VarLookup,
         type_: T,
     },
 }
@@ -148,11 +150,11 @@ pub trait UntypedExprVisitor<'a> {
                 type_: _,
             } => self.visit_binary(left, operator, right),
             ExprKind::Call {
-                callee,
+                lookup,
                 arguments,
                 source,
                 type_: _,
-            } => self.visit_call(callee, arguments, source),
+            } => self.visit_call(lookup, arguments, source),
             ExprKind::AccessStruct {
                 left,
                 right,
@@ -182,26 +184,26 @@ pub trait UntypedExprVisitor<'a> {
                 type_: _,
             } => self.visit_ternary(condition, if_branch, else_branch, source),
             ExprKind::Literal { literal, type_: _ } => self.visit_literal(literal),
-            ExprKind::Variable { name, type_: _ } => self.visit_variable(name),
+            ExprKind::Variable { lookup, type_: _ } => self.visit_variable(lookup),
         }
     }
 
     fn visit_unary(
         &mut self,
-        operator: &'a ExprOrigin<UnaryOp>,
+        operator: &'a Origin<UnaryOp>,
         right: &'a UntypedExpr,
     ) -> Self::Output;
 
     fn visit_binary(
         &mut self,
         left: &'a UntypedExpr,
-        operator: &'a ExprOrigin<BinaryOp>,
+        operator: &'a Origin<BinaryOp>,
         right: &'a UntypedExpr,
     ) -> Self::Output;
 
     fn visit_call(
         &mut self,
-        callee: &'a UntypedExpr,
+        lookup: &'a CallLookup<Untyped>,
         arguments: &'a [UntypedExpr],
         source: &'a Source,
     ) -> Self::Output;
@@ -233,9 +235,9 @@ pub trait UntypedExprVisitor<'a> {
         source: &'a Source,
     ) -> Self::Output;
 
-    fn visit_literal(&mut self, value: &'a ExprOrigin<Literal>) -> Self::Output;
+    fn visit_literal(&mut self, value: &'a Origin<Literal>) -> Self::Output;
 
-    fn visit_variable(&mut self, name: &'a Identifier) -> Self::Output;
+    fn visit_variable(&mut self, lookup: &'a VarLookup) -> Self::Output;
 }
 
 pub trait TypedExprVisitor<'a> {
@@ -265,11 +267,11 @@ pub trait TypedExprVisitor<'a> {
                 type_,
             } => self.visit_index_array(object, index, source, type_),
             ExprKind::Call {
-                callee,
+                lookup,
                 arguments,
                 source,
                 type_,
-            } => self.visit_call(callee, arguments, source, type_),
+            } => self.visit_call(lookup, arguments, source, type_),
             ExprKind::CreateArray {
                 fields,
                 source,
@@ -288,13 +290,13 @@ pub trait TypedExprVisitor<'a> {
                 type_,
             } => self.visit_ternary(condition, if_branch, else_branch, source, type_),
             ExprKind::Literal { literal, type_ } => self.visit_literal(literal, type_),
-            ExprKind::Variable { name, type_ } => self.visit_variable(name, type_),
+            ExprKind::Variable { lookup, type_ } => self.visit_variable(lookup, type_),
         }
     }
 
     fn visit_unary(
         &mut self,
-        operator: &'a ExprOrigin<UnaryOp>,
+        operator: &'a Origin<UnaryOp>,
         right: &'a Expr<Self::Type>,
         type_: &'a Self::Type,
     ) -> Self::Output;
@@ -302,7 +304,7 @@ pub trait TypedExprVisitor<'a> {
     fn visit_binary(
         &mut self,
         left: &'a Expr<Self::Type>,
-        operator: &'a ExprOrigin<BinaryOp>,
+        operator: &'a Origin<BinaryOp>,
         right: &'a Expr<Self::Type>,
         type_: &'a Self::Type,
     ) -> Self::Output;
@@ -324,7 +326,7 @@ pub trait TypedExprVisitor<'a> {
 
     fn visit_call(
         &mut self,
-        callee: &'a Expr<Self::Type>,
+        lookup: &'a CallLookup<Self::Type>,
         arguments: &'a [Expr<Self::Type>],
         source: &'a Source,
         type_: &'a Self::Type,
@@ -353,13 +355,9 @@ pub trait TypedExprVisitor<'a> {
         type_: &'a Self::Type,
     ) -> Self::Output;
 
-    fn visit_literal(
-        &mut self,
-        value: &'a ExprOrigin<Literal>,
-        type_: &'a Self::Type,
-    ) -> Self::Output;
+    fn visit_literal(&mut self, value: &'a Origin<Literal>, type_: &'a Self::Type) -> Self::Output;
 
-    fn visit_variable(&mut self, name: &'a Identifier, type_: &'a Self::Type) -> Self::Output;
+    fn visit_variable(&mut self, lookup: &'a VarLookup, type_: &'a Self::Type) -> Self::Output;
 }
 
 pub trait ExprFolder {
@@ -389,11 +387,11 @@ pub trait ExprFolder {
                 type_,
             } => self.fold_index_array(*object, *index, source, type_),
             ExprKind::Call {
-                callee,
+                lookup,
                 arguments,
                 source,
                 type_,
-            } => self.fold_call(*callee, arguments, source, type_),
+            } => self.fold_call(lookup, arguments, source, type_),
             ExprKind::CreateArray {
                 fields,
                 source,
@@ -412,13 +410,13 @@ pub trait ExprFolder {
                 type_,
             } => self.fold_ternary(*condition, *if_branch, *else_branch, source, type_),
             ExprKind::Literal { literal, type_ } => self.fold_literal(literal, type_),
-            ExprKind::Variable { name, type_ } => self.fold_variable(name, type_),
+            ExprKind::Variable { lookup, type_ } => self.fold_variable(lookup, type_),
         }
     }
 
     fn fold_unary(
         &mut self,
-        operator: ExprOrigin<UnaryOp>,
+        operator: Origin<UnaryOp>,
         right: Expr<Self::Type>,
         type_: Self::Type,
     ) -> Self::Output;
@@ -426,7 +424,7 @@ pub trait ExprFolder {
     fn fold_binary(
         &mut self,
         left: Expr<Self::Type>,
-        operator: ExprOrigin<BinaryOp>,
+        operator: Origin<BinaryOp>,
         right: Expr<Self::Type>,
         type_: Self::Type,
     ) -> Self::Output;
@@ -448,7 +446,7 @@ pub trait ExprFolder {
 
     fn fold_call(
         &mut self,
-        callee: Expr<Self::Type>,
+        lookup: CallLookup<Self::Type>,
         arguments: Vec<Expr<Self::Type>>,
         source: Source,
         type_: Self::Type,
@@ -477,7 +475,7 @@ pub trait ExprFolder {
         type_: Self::Type,
     ) -> Self::Output;
 
-    fn fold_literal(&mut self, value: ExprOrigin<Literal>, type_: Self::Type) -> Self::Output;
+    fn fold_literal(&mut self, value: Origin<Literal>, type_: Self::Type) -> Self::Output;
 
-    fn fold_variable(&mut self, name: Identifier, type_: Self::Type) -> Self::Output;
+    fn fold_variable(&mut self, lookup: VarLookup, type_: Self::Type) -> Self::Output;
 }

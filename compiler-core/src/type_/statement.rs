@@ -3,12 +3,12 @@ use crate::{
     ast::{
         TypedStmt,
         expression::Expr,
+        fold_vec,
         identifier::Identifier,
         prelude::*,
         statement::{Stmt, StmtFolder},
     },
     error::{Error, Result, label, primary},
-    fold_vec,
     lexer::Source,
     type_::{Typed, Untyped, prelude::*, unify},
 };
@@ -18,7 +18,7 @@ impl StmtFolder for SemanticAnalyser {
     type Output = Result<TypedStmt>;
 
     fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, source: Source) -> Self::Output {
-        let statements = fold_vec!(self, fold_stmt, statements)?;
+        let statements = fold_vec(statements, |stmt| self.fold_stmt(stmt))?;
         Ok(block(statements, source))
     }
 
@@ -32,7 +32,7 @@ impl StmtFolder for SemanticAnalyser {
         let initializer = self.infer(initializer)?;
         let type_ = if let Some(declared) = declared {
             unify(initializer.type_().clone(), declared.clone()).map_err(|d| {
-                Error::with_diagnostic(
+                Error::new(
                     d.with_label(primary(source))
                         .with_label(label(format!("declared type was {}", declared), &name))
                         .with_label(label(
@@ -70,9 +70,9 @@ impl StmtFolder for SemanticAnalyser {
         source: Source,
     ) -> Self::Output {
         let condition = self.infer_and_unify(condition, bool())?;
-        let if_branch = fold_vec!(self, fold_stmt, if_branch)?;
+        let if_branch = fold_vec(if_branch, |stmt| self.fold_stmt(stmt))?;
         let else_branch = if let Some(else_branch) = else_branch {
-            Some(fold_vec!(self, fold_stmt, else_branch)?)
+            Some(fold_vec(else_branch, |stmt| self.fold_stmt(stmt))?)
         } else {
             None
         };
@@ -86,7 +86,7 @@ impl StmtFolder for SemanticAnalyser {
         source: Source,
     ) -> Self::Output {
         let condition = self.infer_and_unify(condition, bool())?;
-        let body = fold_vec!(self, fold_stmt, body)?;
+        let body = fold_vec(body, |stmt| self.fold_stmt(stmt))?;
         Ok(while_(condition, body, source))
     }
 

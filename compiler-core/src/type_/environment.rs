@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Location, identifier::Identifier},
+    ast::{Location, Unfold, identifier::Identifier, lookup::Lookup, origin::Origin},
     error::{Error, Result, diagnostic, error, label},
     lexer::Source,
     type_::{Typed, prelude::*},
@@ -8,49 +8,54 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 use symbol_table::GlobalSymbol;
 
-#[derive(Debug)]
-pub struct TypeDefinition {
-    type_: Typed,
-    source: Source,
-}
-
-impl TypeDefinition {
-    pub fn new(type_: Typed, source: Source) -> Self {
-        Self { type_, source }
-    }
-
-    pub fn type_(&self) -> &Typed {
-        &self.type_
-    }
-}
-
-impl Location for TypeDefinition {
-    fn source(&self) -> Source {
-        self.source
-    }
-}
-
+pub type TypeDefinition = Origin<Typed>;
 pub type Scope = HashMap<GlobalSymbol, TypeDefinition>;
+
+trait Namespace {
+    fn find_symbol(&self, name: &Identifier) -> Result<&TypeDefinition>;
+
+    fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace>;
+}
 
 #[derive(Debug)]
 pub struct StructInterface {
     /// The name of this struct.
-    name: GlobalSymbol,
+    name: Identifier,
 
-    /// All associated members like attributes and methods.
+    /// Attributes
+    items: Scope,
+
+    /// All associated members like static constants and methods.
     associated: Scope,
-
-    /// Where this struct was declared.
-    source: Source,
 }
 
 impl StructInterface {
-    pub fn new(name: GlobalSymbol, source: Source) -> Self {
+    pub fn new(name: Identifier) -> Self {
         Self {
             name,
+            items: Scope::new(),
             associated: Scope::new(),
-            source,
         }
+    }
+
+    pub fn declare_item(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
+        self.items
+            .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
+            .map_or_else(
+                || Ok(()),
+                |def| {
+                    error(
+                        diagnostic("field already exists", name)
+                            .with_label(label("variable was already declared here", &def)),
+                    )
+                },
+            )
+    }
+
+    pub fn find_item(&self, name: &Identifier) -> Result<&TypeDefinition> {
+        self.items
+            .get(&name.symbol())
+            .ok_or_else(|| Error::new(diagnostic("field not found", name)))
     }
 
     pub fn declare_associaten(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
@@ -70,103 +75,126 @@ impl StructInterface {
     pub fn find_associaten(&self, name: &Identifier) -> Result<&TypeDefinition> {
         self.associated
             .get(&name.symbol())
-            .ok_or_else(|| Error::new(vec![diagnostic("field not found", name)]))
+            .ok_or_else(|| Error::new(diagnostic("field not found", name)))
     }
 
-    pub fn name(&self) -> GlobalSymbol {
-        self.name
+    pub fn name(&self) -> &Identifier {
+        &self.name
+    }
+}
+
+impl Namespace for StructInterface {
+    fn find_symbol(&self, name: &Identifier) -> Result<&TypeDefinition> {
+        self.find_associaten(name)
+    }
+
+    fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace> {
+        error(
+            diagnostic(format!("structs can not contain namespaces"), name).with_label(label(
+                format!("when trying to access struct {}", self.name),
+                self,
+            )),
+        )
     }
 }
 
 impl Location for StructInterface {
     fn source(&self) -> Source {
-        self.source
+        self.name.source()
     }
 }
 
 #[derive(Debug)]
 pub struct ModuleInterface {
     /// The name of this module.
-    name: GlobalSymbol,
+    name: Identifier,
 
     /// Available submodules.
-    #[allow(unused)]
     modules: HashMap<GlobalSymbol, Arc<ModuleInterface>>,
 
     /// Declared structs.
     structs: HashMap<GlobalSymbol, StructInterface>,
 
-    /// Declared types.
-    types: Scope,
-
-    /// Declared static values.
-    values: Scope,
+    /// Associated types, functions and variables.
+    associated: Scope,
 }
 
 impl ModuleInterface {
-    pub fn new(name: GlobalSymbol) -> Self {
+    pub fn new(name: Identifier) -> Self {
         Self {
             name,
             modules: HashMap::new(),
             structs: HashMap::new(),
-            types: Scope::new(),
-            values: Scope::new(),
+            associated: Scope::new(),
         }
     }
 
+    pub fn declare_module(&mut self, module: Arc<ModuleInterface>) -> Result<()> {
+        self.modules
+            .insert(module.as_ref().name().symbol(), module)
+            .map_or_else(
+                || Ok(()),
+                |d| error(diagnostic("struct already exists", d.name())),
+            )
+    }
+
+    pub fn find_module(&self, name: &Identifier) -> Result<&Arc<ModuleInterface>> {
+        self.modules
+            .get(&name.symbol())
+            .ok_or_else(|| Error::new(diagnostic("module not found", name)))
+    }
+
     pub fn declare_struct(&mut self, struct_: StructInterface) -> Result<()> {
-        self.structs.insert(struct_.name(), struct_).map_or_else(
-            || Ok(()),
-            |d| error(diagnostic("struct already exists", &d)),
-        )
+        self.structs
+            .insert(struct_.name().symbol(), struct_)
+            .map_or_else(
+                || Ok(()),
+                |d| error(diagnostic("struct already exists", &d)),
+            )
     }
 
     pub fn find_struct(&self, name: &GlobalSymbol) -> Option<&StructInterface> {
         self.structs.get(name)
     }
 
-    pub fn declare_var(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
-        self.values
+    pub fn declare_associated(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
+        self.associated
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
             .map_or_else(
                 || Ok(()),
                 |def| {
                     error(
-                        diagnostic("variable already exists", name)
-                            .with_label(label("variable was already declared here", &def)),
+                        diagnostic("name already exists", name)
+                            .with_label(label("name was already declared here", &def)),
                     )
                 },
             )
     }
 
-    pub fn find_var(&self, name: &Identifier) -> Result<&TypeDefinition> {
-        self.values
+    pub fn find_associaten(&self, name: &Identifier) -> Result<&TypeDefinition> {
+        self.associated
             .get(&name.symbol())
-            .ok_or_else(|| Error::new(vec![diagnostic("variable not found", name)]))
+            .ok_or_else(|| Error::new(diagnostic("field not found", name)))
     }
 
-    pub fn declare_type(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
-        self.types
-            .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
-            .map_or_else(
-                || Ok(()),
-                |def| {
-                    error(
-                        diagnostic("variable already exists", name)
-                            .with_label(label("variable was already declared here", &def)),
-                    )
-                },
-            )
+    pub fn name(&self) -> &Identifier {
+        &self.name
+    }
+}
+
+impl Namespace for ModuleInterface {
+    fn find_symbol(&self, name: &Identifier) -> Result<&TypeDefinition> {
+        self.find_associaten(name)
     }
 
-    pub fn find_type(&self, name: &Identifier) -> Result<&TypeDefinition> {
-        self.types
-            .get(&name.symbol())
-            .ok_or_else(|| Error::new(vec![diagnostic("variable not found", name)]))
-    }
-
-    pub fn name(&self) -> GlobalSymbol {
-        self.name
+    fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace> {
+        if let Some(module) = self.modules.get(&name.symbol()) {
+            return Ok(module.as_ref() as &dyn Namespace);
+        }
+        if let Some(struct_) = self.structs.get(&name.symbol()) {
+            return Ok(struct_ as &dyn Namespace);
+        }
+        error(diagnostic("name not found", name))
     }
 }
 
@@ -174,26 +202,18 @@ impl ModuleInterface {
 pub struct Environment {
     ids: UniqueIdGenerator,
 
-    /// Modules that have been imported by the current module.
-    modules: HashMap<GlobalSymbol, Arc<ModuleInterface>>,
+    /// The module of the current file.
+    module: Arc<ModuleInterface>,
 
     /// Values defined in the current function
     scopes: Vec<Scope>,
-
-    /// The module of the current file.
-    current_module: GlobalSymbol,
 }
 
 impl Environment {
     pub fn new(ids: UniqueIdGenerator, module: Arc<ModuleInterface>) -> Self {
         Self {
             ids,
-            current_module: module.name(),
-            modules: {
-                let mut modules = HashMap::new();
-                modules.insert(module.name(), module);
-                modules
-            },
+            module,
             scopes: Vec::new(),
         }
     }
@@ -213,9 +233,7 @@ impl Environment {
     }
 
     fn module(&self) -> &ModuleInterface {
-        self.modules
-            .get(&self.current_module)
-            .expect("own module exists")
+        &self.module
     }
 
     pub fn find_struct(&self, name: &GlobalSymbol) -> Option<&StructInterface> {
@@ -236,21 +254,49 @@ impl Environment {
             )
     }
 
-    pub fn find_var(&self, name: &Identifier) -> Result<&TypeDefinition> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.get(&name.symbol()) {
-                return Ok(value);
+    pub fn find_symbol(&self, lookup: &Lookup, name: &Identifier) -> Result<&TypeDefinition> {
+        match lookup {
+            Lookup::Qualified(path) => {
+                let mut space = self.module() as &dyn Namespace;
+                for name in path {
+                    space = space.find_subspace(name)?;
+                }
+                space.find_symbol(name)
             }
+            Lookup::Unqualified => self.module().find_symbol(name),
         }
-
-        self.module().find_var(name)
     }
 
-    pub fn find_type(&self, name: &Identifier) -> Result<&TypeDefinition> {
-        self.module().find_type(name)
+    pub fn find_var(&self, lookup: &Lookup, name: &Identifier) -> Result<&TypeDefinition> {
+        match lookup {
+            Lookup::Qualified(path) => {
+                let mut space = self.module() as &dyn Namespace;
+                for name in path {
+                    space = space.find_subspace(name)?;
+                }
+                space.find_symbol(name)
+            }
+            Lookup::Unqualified => {
+                for scope in self.scopes.iter().rev() {
+                    if let Some(value) = scope.get(&name.symbol()) {
+                        return Ok(value);
+                    }
+                }
+
+                self.module().find_symbol(name)
+            }
+        }
     }
 
     pub fn new_unbound_var(&mut self) -> Typed {
         unbound_var(self.ids.next())
+    }
+}
+
+impl Unfold for Environment {
+    type Unfolded = Arc<ModuleInterface>;
+
+    fn unfold(self) -> Self::Unfolded {
+        self.module
     }
 }

@@ -6,7 +6,8 @@ use tau_core::{
         declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        lookup::{CallLookup, VarLookup},
+        origin::{BinaryOp, Literal, Origin, UnaryOp},
         statement::{Stmt, StmtVisitor},
     },
     error::DynResult,
@@ -70,7 +71,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_unary(
         &mut self,
-        operator: &ExprOrigin<UnaryOp>,
+        operator: &Origin<UnaryOp>,
         right: &'a Expr<Self::Type>,
         _: &Self::Type,
     ) -> CSourceCode {
@@ -86,7 +87,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
     fn visit_binary(
         &mut self,
         left: &'a Expr<Self::Type>,
-        operator: &ExprOrigin<BinaryOp>,
+        operator: &Origin<BinaryOp>,
         right: &'a Expr<Self::Type>,
         _: &Self::Type,
     ) -> CSourceCode {
@@ -144,18 +145,18 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_call(
         &mut self,
-        callee: &'a Expr<Self::Type>,
+        lookup: &'a CallLookup<Self::Type>,
         arguments: &'a [Expr<Self::Type>],
         _: &'a Source,
         _: &Self::Type,
     ) -> CSourceCode {
-        let callee = self.visit_expr(callee);
+        let name = lookup.name().symbol();
         let arguments = arguments
             .iter()
             .map(|x| format!("{}", self.visit_expr(x)))
             .collect::<Vec<String>>()
             .join(", ");
-        format!("{callee}({arguments})").into()
+        format!("{name}({arguments})").into()
     }
 
     fn visit_create_array(
@@ -204,7 +205,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         format!("{condition} ? {if_branch} : {else_branch}").into()
     }
 
-    fn visit_literal(&mut self, value: &ExprOrigin<Literal>, _: &Self::Type) -> CSourceCode {
+    fn visit_literal(&mut self, value: &Origin<Literal>, _: &Self::Type) -> CSourceCode {
         match value.kind() {
             Literal::Bool(value) => value.to_string(),
             Literal::Int(value) => value.to_string(),
@@ -214,8 +215,8 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         .into()
     }
 
-    fn visit_variable(&mut self, name: &Identifier, _: &Self::Type) -> CSourceCode {
-        name.into()
+    fn visit_variable(&mut self, lookup: &VarLookup, _: &Self::Type) -> CSourceCode {
+        lookup.name().into()
     }
 }
 

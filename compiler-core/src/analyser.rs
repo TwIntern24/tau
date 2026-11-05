@@ -1,10 +1,9 @@
 use crate::{
     ast::{
         TypedDecl, TypedExpr, UntypedDecl, UntypedExpr, declaration::DeclFolder,
-        expression::ExprFolder,
+        expression::ExprFolder, fold_vec,
     },
     error::{Error, Result, label, primary},
-    fold_vec,
     type_::{Typed, environment::Environment, unify},
 };
 
@@ -34,7 +33,7 @@ impl SemanticAnalyser {
     pub fn infer_and_unify(&mut self, expression: UntypedExpr, type_: Typed) -> Result<TypedExpr> {
         let expression = self.infer(expression)?;
         unify(type_, expression.type_().clone()).map_err(|d| {
-            Error::with_diagnostic(d.with_label(primary(&expression)).with_label(label(
+            Error::new(d.with_label(primary(&expression)).with_label(label(
                 format!("expression has type {}", expression.type_()),
                 &expression,
             )))
@@ -43,6 +42,6 @@ impl SemanticAnalyser {
     }
 
     pub fn fold_ast(&mut self, ast: Vec<UntypedDecl>) -> Result<Vec<TypedDecl>> {
-        fold_vec!(self, fold_decl, ast)
+        fold_vec(ast, |decl| self.fold_decl(decl))
     }
 }

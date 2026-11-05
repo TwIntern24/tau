@@ -2,9 +2,9 @@ use crate::{
     ast::{
         Location,
         identifier::Identifier,
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        origin::{BinaryOp, Literal, Origin, UnaryOp},
     },
-    error::{self, FileId},
+    error::{self, FileId, diagnostic},
     lexer::source::Source,
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -26,6 +26,7 @@ pub enum TokenType {
     Dot,
     Comma,     // ,
     Colon,     // :
+    Access,    // ::
     Semicolon, // ;
     To,        // ->
 
@@ -191,7 +192,7 @@ impl From<Token> for Source {
     }
 }
 
-impl<O> TryFrom<Token> for ExprOrigin<O>
+impl<O> TryFrom<Token> for Origin<O>
 where
     O: TryFrom<TokenType, Error = Diagnostic<FileId>> + Debug,
 {
@@ -200,32 +201,31 @@ where
     fn try_from(value: Token) -> error::Result<Self> {
         let (type_, source) = (value.token_type, value.source);
         let kind = O::try_from(type_).map_err(|e| {
-            error::Error::new(vec![
-                e.with_label(Label::primary(source.file_id(), source.range())),
-            ])
+            error::Error::new(e.with_label(Label::primary(source.file_id(), source.range())))
         })?;
         Ok(Self::new(kind, source))
     }
 }
 
-impl From<Token> for Identifier {
-    fn from(token: Token) -> Self {
-        match token.token_type() {
-            TokenType::Identifier(name) => Identifier::new(*name, token.source),
-            TokenType::VSelf => Identifier::new(static_symbol!("self"), token.source),
-            // TODO: Maybe replace with TryFrom?
-            _ => panic!("token '{:?}' is not a identifier", token),
-        }
+impl TryFrom<Token> for Identifier {
+    type Error = error::Error;
+
+    fn try_from(token: Token) -> error::Result<Self> {
+        Self::try_from(&token)
     }
 }
 
-impl From<&Token> for Identifier {
-    fn from(token: &Token) -> Self {
-        if let TokenType::Identifier(name) = token.token_type() {
-            Identifier::new(*name, token.source.clone())
-        } else {
-            // TODO: Maybe replace with TryFrom?
-            panic!("can only be used on an identifier")
+impl TryFrom<&Token> for Identifier {
+    type Error = error::Error;
+
+    fn try_from(token: &Token) -> error::Result<Self> {
+        match token.token_type() {
+            TokenType::Identifier(name) => Ok(Identifier::new(*name, token.source)),
+            TokenType::VSelf => Ok(Identifier::new(static_symbol!("self"), token.source)),
+            _ => error::error(diagnostic(
+                format!("token '{:?}' is not an identifier", token),
+                token,
+            )),
         }
     }
 }

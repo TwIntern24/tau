@@ -1,6 +1,6 @@
 extern fn sqrt(v: f64) -> f64;
 
-extern fn puts(v: str);
+extern fn puts(v: str) -> i8;
 
 struct Vec2 {
     x: f64,

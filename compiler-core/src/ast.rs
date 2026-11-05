@@ -10,6 +10,7 @@ use std::sync::Arc;
 pub mod declaration;
 pub mod expression;
 pub mod identifier;
+pub mod lookup;
 #[macro_use]
 pub mod macros;
 pub mod origin;
@@ -20,6 +21,12 @@ pub use declaration::Decl;
 pub use expression::Expr;
 pub use identifier::Identifier;
 pub use statement::Stmt;
+
+pub trait Unfold {
+    type Unfolded;
+
+    fn unfold(self) -> Self::Unfolded;
+}
 
 pub trait Location {
     fn source(&self) -> Source;
@@ -36,6 +43,17 @@ where
     fn from(value: &L) -> Source {
         value.source()
     }
+}
+
+pub fn fold_vec<I, O, E, F>(fold: Vec<I>, mut func: F) -> Result<Vec<O>, E>
+where
+    F: FnMut(I) -> Result<O, E>,
+{
+    let mut folded = Vec::with_capacity(fold.len());
+    for e in fold {
+        folded.push(func(e)?);
+    }
+    Ok(folded)
 }
 
 pub type UntypedExpr = Expr<Untyped>;

@@ -43,7 +43,13 @@ impl<'a> Lexer<'a> {
             ']' => TokenType::BracketRight,
             ',' => TokenType::Comma,
             '.' => TokenType::Dot,
-            ':' => TokenType::Colon,
+            ':' => {
+                if self.matchc(':') {
+                    TokenType::Access
+                } else {
+                    TokenType::Colon
+                }
+            }
             ';' => TokenType::Semicolon,
             '+' => {
                 if self.matchc('=') {
@@ -266,7 +272,7 @@ impl<'a> Lexer<'a> {
         self.chars
             .next()
             .map(|v| v.1)
-            .ok_or_else(|| Error::new(vec![Diagnostic::error().with_message("unexpected eof")]))
+            .ok_or_else(|| Error::new(Diagnostic::error().with_message("unexpected eof")))
     }
 
     fn end(&self) -> usize {

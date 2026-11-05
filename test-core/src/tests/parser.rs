@@ -4,7 +4,7 @@ use tau_core::{
     ast::{
         Identifier,
         declaration::{FuncDecl, FuncModifiers, StructDecl},
-        origin::{ExprOrigin, Literal},
+        origin::{Literal, Origin},
         prelude::*,
     },
     lexer::{Lexer, Source},
@@ -86,7 +86,7 @@ fn parses_from_lexer() {
                         Identifier::new(static_symbol!("a"), Source::new(file_id, 162..163)),
                         None,
                         literal(
-                            ExprOrigin::new(Literal::Bool(true), Source::new(file_id, 166..169)),
+                            Origin::new(Literal::Bool(true), Source::new(file_id, 166..169)),
                             (),
                         ),
                         Source::new(file_id, 158..169),

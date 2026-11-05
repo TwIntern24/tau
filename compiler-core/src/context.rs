@@ -63,7 +63,7 @@ impl Context {
     }
 
     pub fn cache_module(&mut self, module: Arc<ModuleInterface>) {
-        self.modules.insert(module.name(), module);
+        self.modules.insert(module.name().symbol(), module);
     }
 
     pub fn find_module(&self, name: &GlobalSymbol) -> Option<&Arc<ModuleInterface>> {

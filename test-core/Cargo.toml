@@ -2,8 +2,8 @@
 name = "test-core"
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license-file = "../LICENSE"
 
 [dependencies]
-tau-core = { path = "../compiler-core" }
+tau-lang-core = { workspace = true }
 symbol_table = "0.5.0"

@@ -3,8 +3,12 @@ name = "tau-generator-c"
 version = "0.1.0"
 authors = ["Karl Zschiebsch"]
 edition = "2024"
-license = "Apache-2.0"
+
+description = "A c generator for the Tau compiler."
+readme = "../README.md"
+license-file = "../LICENSE"
+homepage = "https://codeberg.org/tau-lang"
+repository = "https://github.com/tau-lang/tau"
 
 [dependencies]
-# The pure compiler
-tau-core = { path = "../compiler-core" }
+tau-lang-core = { path = "../compiler-core", version = "0.1.0" }

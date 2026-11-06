@@ -2,9 +2,9 @@
 name = "test-cli"
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license-file = "../LICENSE"
 
 [dependencies]
+tau-lang-cli = { workspace = true }
+tau-lang-core = { workspace = true }
 bpaf = { version = "0.9.28", features = ["docgen"] }
-tau-cli = { path = "../compiler-cli" }
-tau-core = { path = "../compiler-core" }

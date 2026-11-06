@@ -9,3 +9,14 @@ members = [
   "test-cli",
   "test-core",
 ]
+
+[workspace.dependencies]
+tau-lang-cli = { path = "./compiler-cli", version = "0.1.0" }
+tau-lang-core = { path = "./compiler-core", version = "0.1.0" }
+tau-generator-c = { path = "./generator-c", version = "0.1.0" }
+tau-generator-qbe = { path = "./generator-qbe", version = "0.1.0" }
+codespan-reporting = "0.13.1"
+symbol_table = { version = "0.5.0", features = ["global"] }
+
+[profile.release]
+debug = "line-tables-only"

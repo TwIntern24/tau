@@ -159,34 +159,14 @@ dependencies = [
 name = "tau"
 version = "0.1.0"
 dependencies = [
- "tau-cli",
-]
-
-[[package]]
-name = "tau-cli"
-version = "0.1.0"
-dependencies = [
- "bpaf",
- "codespan-reporting",
- "symbol_table",
- "tau-core",
- "tau-generator-c",
- "tau-generator-qbe",
-]
-
-[[package]]
-name = "tau-core"
-version = "0.1.0"
-dependencies = [
- "codespan-reporting",
- "symbol_table",
+ "tau-lang-cli",
 ]
 
 [[package]]
 name = "tau-generator-c"
 version = "0.1.0"
 dependencies = [
- "tau-core",
+ "tau-lang-core",
 ]
 
 [[package]]
@@ -195,7 +175,27 @@ version = "0.1.0"
 dependencies = [
  "qbe",
  "symbol_table",
- "tau-core",
+ "tau-lang-core",
+]
+
+[[package]]
+name = "tau-lang-cli"
+version = "0.1.0"
+dependencies = [
+ "bpaf",
+ "codespan-reporting",
+ "symbol_table",
+ "tau-generator-c",
+ "tau-generator-qbe",
+ "tau-lang-core",
+]
+
+[[package]]
+name = "tau-lang-core"
+version = "0.1.0"
+dependencies = [
+ "codespan-reporting",
+ "symbol_table",
 ]
 
 [[package]]
@@ -212,8 +212,8 @@ name = "test-cli"
 version = "0.1.0"
 dependencies = [
  "bpaf",
- "tau-cli",
- "tau-core",
+ "tau-lang-cli",
+ "tau-lang-core",
 ]
 
 [[package]]
@@ -221,7 +221,7 @@ name = "test-core"
 version = "0.1.0"
 dependencies = [
  "symbol_table",
- "tau-core",
+ "tau-lang-core",
 ]
 
 [[package]]

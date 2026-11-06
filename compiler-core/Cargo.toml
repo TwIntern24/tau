@@ -1,17 +1,19 @@
 [package]
-name = "tau-core"
+name = "tau-lang-core"
 version = "0.1.0"
 edition = "2024"
 authors = ["Lovis Rentsch", "Karl Zschiebsch"]
-description = "compiler"
-license-file = "./LICENSE"
-rust-version = "1.85"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Core compiler for the Tau programming language."
+readme = "../README.md"
+license-file = "../LICENSE"
+homepage = "https://codeberg.org/tau-lang"
+repository = "https://github.com/tau-lang/tau"
+keywords = ["tau", "compiler"]
+
+[lib]
+name = "tau_core"
 
 [dependencies]
-codespan-reporting = "0.13.1"
-symbol_table = { version = "0.5.0", features = ["global"] }
-
-[profile.release]
-debug = "line-tables-only"
+codespan-reporting = { workspace = true }
+symbol_table = { workspace = true }

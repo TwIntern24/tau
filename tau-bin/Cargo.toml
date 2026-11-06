@@ -3,7 +3,12 @@ name = "tau"
 version = "0.1.0"
 authors = ["Karl Zschiebsch"]
 edition = "2024"
-license = "Apache-2.0"
+
+description = "Compiler fot the Tau language."
+readme = "../README.md"
+license-file = "../LICENSE"
+homepage = "https://codeberg.org/tau-lang"
+repository = "https://github.com/tau-lang/tau"
 
 [dependencies]
-tau-cli = { path = "../compiler-cli" }
+tau-lang-cli = { workspace = true }

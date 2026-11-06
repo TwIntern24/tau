@@ -88,3 +88,16 @@ impl Options {
         &self.code_gen
     }
 }
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            input: Default::default(),
+            out_dir: Default::default(),
+            output: Default::default(),
+            crate_name: static_symbol!(""),
+            module_name: Default::default(),
+            code_gen: Default::default(),
+        }
+    }
+}

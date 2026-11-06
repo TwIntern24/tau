@@ -30,10 +30,12 @@ pub type Scope = HashMap<GlobalSymbol, Value>;
 pub struct Translator<'a, E: Emitter> {
     emitter: &'a mut E,
 
-    /// Values defined in the current function together with the name of the block.
+    /// Values defined in the current function together with the name of the
+    /// block.
     scopes: Vec<Scope>,
 
-    /// End labels for each block. They are the jmp destination for the break statement.
+    /// End labels for each block. They are the jmp destination for the break
+    /// statement.
     loop_labels: Vec<GlobalSymbol>,
 
     data_counter: usize,
@@ -218,8 +220,8 @@ impl<'a, E: Emitter> StmtFolder for Translator<'a, E> {
     type Output = ();
 
     fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, _: Source) -> Self::Output {
-        /// This is the name of the next block. We use this as a jmp destination if we need
-        /// to leave the block earlier.
+        /// This is the name of the next block. We use this as a jmp destination
+        /// if we need to leave the block earlier.
         let end_label = self.new_block_name();
         self.begin_scope();
         for stmt in statements {

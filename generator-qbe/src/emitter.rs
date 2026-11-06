@@ -11,7 +11,7 @@ use tau_core::{
         linkage::Linkage,
         value::{Value, ValueKind},
     },
-    type_::{self, Typed, prelude::*},
+    type_::{self, Typed},
 };
 
 const fn function() -> Function {
@@ -229,10 +229,10 @@ impl Emitter for QbeEmitter {
             .add_data(DataDef::new(linkage, name.to_string(), None, items));
     }
 
-    fn emit_stmt_assign(&mut self, var: &Value, init: Self::Instr) {
-        let type_ = self.emit_type(var.type_());
-        let value = self.emit_value(var);
-        self.block.assign_instr(value, type_, init);
+    fn emit_stmt_assign(&mut self, name: GlobalSymbol, type_: &Typed, init: Self::Instr) {
+        let type_ = self.emit_type(type_);
+        self.block
+            .assign_instr(qbe::Value::Temporary(name.to_string()), type_, init);
     }
     fn emit_stmt_volatile(&mut self, instr: Self::Instr) {
         self.block.add_instr(instr)
@@ -340,11 +340,11 @@ impl Emitter for QbeEmitter {
         }
     }
     fn emit_instr_store(&mut self, dest: &Value, src: &Value) -> Self::Instr {
-        let type_ = self.emit_type(&ptr(src.type_().clone(), true));
+        let type_ = self.emit_type(src.type_());
         qbe::Instr::Store(type_, self.emit_value(dest), self.emit_value(src))
     }
-    fn emit_instr_load(&mut self, src: &Value) -> Self::Instr {
-        qbe::Instr::Load(self.emit_type(src.type_()), self.emit_value(src))
+    fn emit_instr_load(&mut self, type_: &Typed, src: &Value) -> Self::Instr {
+        qbe::Instr::Load(self.emit_type(type_), self.emit_value(src))
     }
     fn emit_instr_phi(&mut self, values: Vec<(GlobalSymbol, Value)>) -> Self::Instr {
         let values = values

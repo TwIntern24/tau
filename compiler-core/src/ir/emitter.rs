@@ -30,12 +30,25 @@ pub trait Emitter {
         items: Vec<(Typed, DataItem)>,
     );
 
-    fn emit_stmt_assign(&mut self, var: &Value, init: Self::Instr);
+    fn emit_stmt_assign(&mut self, name: GlobalSymbol, type_: &Typed, init: Self::Instr);
     fn emit_stmt_volatile(&mut self, instr: Self::Instr);
 
     fn emit_stmt_jmp(&mut self, label: GlobalSymbol) {
         let jmp = self.emit_instr_jmp(label);
         self.emit_stmt_volatile(jmp);
+    }
+    fn emit_stmt_jnz(
+        &mut self,
+        condition: Value,
+        if_label: GlobalSymbol,
+        else_label: GlobalSymbol,
+    ) {
+        let jnz = self.emit_instr_jnz(condition, if_label, else_label);
+        self.emit_stmt_volatile(jnz);
+    }
+    fn emit_stmt_ret(&mut self, value: Option<Value>) {
+        let ret = self.emit_instr_ret(value);
+        self.emit_stmt_volatile(ret);
     }
     fn emit_stmt_store(&mut self, dest: &Value, src: &Value) {
         let store = self.emit_instr_store(dest, src);
@@ -70,6 +83,6 @@ pub trait Emitter {
 
     fn emit_instr_alloca(&mut self, type_: Typed, align: Option<u64>) -> Self::Instr;
     fn emit_instr_store(&mut self, dest: &Value, src: &Value) -> Self::Instr;
-    fn emit_instr_load(&mut self, src: &Value) -> Self::Instr;
+    fn emit_instr_load(&mut self, type_: &Typed, src: &Value) -> Self::Instr;
     fn emit_instr_phi(&mut self, values: Vec<(GlobalSymbol, Value)>) -> Self::Instr;
 }

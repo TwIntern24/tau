@@ -1,15 +1,16 @@
 use crate::{source_code::CSourceCode, visit_vec};
-use std::{boxed::Box, fs::File, io::prelude::*};
+use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        TypedDecl,
+        TypedDecl, TypedStmt,
         declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
-        statement::{Stmt, StmtKind, StmtVisitor},
+        lookup::{CallLookup, VarLookup},
+        origin::{BinaryOp, Literal, Origin, UnaryOp},
+        statement::{Stmt, StmtVisitor},
     },
-    error,
+    error::DynResult,
     generator::Generator,
     lexer::Source,
     type_::Typed,
@@ -24,6 +25,11 @@ impl<'a> CCodeGenerator {
         CCodeGenerator { indent: 0 }
     }
 
+    fn visit_idented(&mut self, stmt: &TypedStmt) -> CSourceCode {
+        let code = self.visit_stmt(stmt);
+        CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
+    }
+
     fn begin_scope(&mut self) {
         self.indent += 1;
     }
@@ -34,16 +40,15 @@ impl<'a> CCodeGenerator {
 }
 
 impl<'a> Generator<'a> for CCodeGenerator {
-    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> error::Result<()> {
-        // TODO:
-        let mut file = File::create(output).unwrap();
+    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> DynResult<()> {
+        let mut file = File::create(output)?;
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("h");
         let header_file = path_buf
             .file_name()
             .expect("expect path has filename")
             .to_str()
-            .expect("expect filename is UTF-8");
+            .unwrap();
 
         let declarations = visit_vec(
             &ast.into_iter()
@@ -55,7 +60,7 @@ impl<'a> Generator<'a> for CCodeGenerator {
             "\n\n",
         );
 
-        write!(file, "#include \"{header_file}\"\n\n{declarations}\n").unwrap();
+        write!(file, "#include \"{header_file}\"\n\n{declarations}\n")?;
         Ok(())
     }
 }
@@ -66,7 +71,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_unary(
         &mut self,
-        operator: &ExprOrigin<UnaryOp>,
+        operator: &Origin<UnaryOp>,
         right: &'a Expr<Self::Type>,
         _: &Self::Type,
     ) -> CSourceCode {
@@ -82,7 +87,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
     fn visit_binary(
         &mut self,
         left: &'a Expr<Self::Type>,
-        operator: &ExprOrigin<BinaryOp>,
+        operator: &Origin<BinaryOp>,
         right: &'a Expr<Self::Type>,
         _: &Self::Type,
     ) -> CSourceCode {
@@ -140,18 +145,18 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
 
     fn visit_call(
         &mut self,
-        callee: &'a Expr<Self::Type>,
+        lookup: &'a CallLookup<Self::Type>,
         arguments: &'a [Expr<Self::Type>],
         _: &'a Source,
         _: &Self::Type,
     ) -> CSourceCode {
-        let callee = self.visit_expr(callee);
+        let name = lookup.name().symbol();
         let arguments = arguments
             .iter()
             .map(|x| format!("{}", self.visit_expr(x)))
             .collect::<Vec<String>>()
             .join(", ");
-        format!("{callee}({arguments})").into()
+        format!("{name}({arguments})").into()
     }
 
     fn visit_create_array(
@@ -186,40 +191,21 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         format!("({type_}) {{{fields}}}").into()
     }
 
-    fn visit_if(
+    fn visit_ternary(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        if_branch: &'a Box<Stmt<Self::Type>>,
-        else_branch: &'a Option<Box<Stmt<Self::Type>>>,
+        if_branch: &'a Expr<Self::Type>,
+        else_branch: &'a Expr<Self::Type>,
         _: &'a Source,
-        type_: &Self::Type,
+        _: &Self::Type,
     ) -> CSourceCode {
         let condition = self.visit_expr(condition);
-        if type_.as_ref().is_void() {
-            let if_branch = self.visit_stmt(if_branch);
-            if let Some(else_branch) = else_branch {
-                let else_branch = self.visit_stmt(else_branch);
-                format!("if ({condition}) {{ {if_branch} }} else {{ {else_branch} }}").into()
-            } else {
-                format!("if ({condition}) {{ {if_branch} }}").into()
-            }
-        } else {
-            let stmt2expr = |stmt: &'a Stmt<Self::Type>| match stmt.kind() {
-                StmtKind::ExprStmt(expr) => expr,
-                _ => panic!("Could not convert statement to expression"),
-            };
-
-            let if_branch = self.visit_expr(stmt2expr(&if_branch.as_ref()));
-            let else_branch = self.visit_expr(stmt2expr(
-                &else_branch
-                    .as_ref()
-                    .expect("expected else expression exists"),
-            ));
-            format!("{condition} ? {if_branch} : {else_branch}").into()
-        }
+        let if_branch = self.visit_expr(if_branch);
+        let else_branch = self.visit_expr(else_branch);
+        format!("{condition} ? {if_branch} : {else_branch}").into()
     }
 
-    fn visit_literal(&mut self, value: &ExprOrigin<Literal>, _: &Self::Type) -> CSourceCode {
+    fn visit_literal(&mut self, value: &Origin<Literal>, _: &Self::Type) -> CSourceCode {
         match value.kind() {
             Literal::Bool(value) => value.to_string(),
             Literal::Int(value) => value.to_string(),
@@ -229,8 +215,8 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
         .into()
     }
 
-    fn visit_variable(&mut self, name: &Identifier, _: &Self::Type) -> CSourceCode {
-        name.into()
+    fn visit_variable(&mut self, lookup: &VarLookup, _: &Self::Type) -> CSourceCode {
+        lookup.name().into()
     }
 }
 
@@ -238,27 +224,11 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     type Type = Typed;
     type Output = CSourceCode;
 
-    fn visit_stmt(&mut self, stmt: &'a Stmt<Self::Type>) -> Self::Output {
-        let code = match stmt.kind() {
-            StmtKind::Block { statements } => self.visit_block(statements),
-            StmtKind::Let {
-                name,
-                declared,
-                initializer,
-            } => self.visit_let(name, declared, initializer),
-            StmtKind::Return { value } => self.visit_return(value),
-            StmtKind::Break => self.visit_break(),
-            StmtKind::While { condition, body } => self.visit_while(condition, body),
-            StmtKind::ExprStmt(expr) => self.visit_expr_stmt(expr),
-        };
-        CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
-    }
-
     fn visit_block(&mut self, statements: &'a [Stmt<Self::Type>]) -> Self::Output {
         self.begin_scope();
         let statements = visit_vec(
             statements,
-            |stmt| format!("{}", self.visit_stmt(stmt)),
+            |stmt| format!("{}", self.visit_idented(stmt)),
             "\n",
         );
         self.end_scope();
@@ -277,23 +247,47 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
         format!("{var_type} {name} = {initializer};").into()
     }
 
-    fn visit_return(&mut self, value: &'a Expr<Self::Type>) -> Self::Output {
-        let value = self.visit_expr(value);
-        format!("return {value};").into()
+    fn visit_return(&mut self, value: &'a Option<Expr<Self::Type>>) -> Self::Output {
+        if let Some(value) = value {
+            let value = self.visit_expr(value);
+            format!("return {value};").into()
+        } else {
+            "return;".to_string().into()
+        }
     }
 
     fn visit_break(&mut self) -> Self::Output {
         "break;".to_string().into()
     }
 
+    fn visit_if(
+        &mut self,
+        condition: &'a Expr<Self::Type>,
+        if_branch: &'a Vec<Stmt<Self::Type>>,
+        else_branch: &'a Option<Vec<Stmt<Self::Type>>>,
+    ) -> Self::Output {
+        let condition = self.visit_expr(condition);
+        let if_branch = visit_vec(if_branch, |stmt| self.visit_idented(stmt).to_string(), "");
+        if let Some(else_branch) = else_branch {
+            let else_branch = visit_vec(
+                &else_branch,
+                |stmt| self.visit_idented(stmt).to_string(),
+                "",
+            );
+            format!("if ({condition}) {{ {if_branch} }} else {{ {else_branch} }}").into()
+        } else {
+            format!("if ({condition}) {{ {if_branch} }}").into()
+        }
+    }
+
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Box<Stmt<Self::Type>>,
+        body: &'a Vec<Stmt<Self::Type>>,
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         self.begin_scope();
-        let body = self.visit_stmt(body);
+        let body = visit_vec(body, |stmt| self.visit_idented(stmt).to_string(), "");
         self.end_scope();
         format!("while ({condition}) {body}").into()
     }
@@ -328,7 +322,11 @@ impl<'a> DeclVisitor<'a> for CCodeGenerator {
             ", ",
         );
         self.begin_scope();
-        let body = visit_vec(&function.body, |x| format!("{}", self.visit_stmt(x)), "\n");
+        let body = visit_vec(
+            &function.body,
+            |x| format!("{}", self.visit_idented(x)),
+            "\n",
+        );
         self.end_scope();
         Some(CSourceCode::from(format!(
             "{return_type} {name}({params}) {{\n{body}\n}}"

@@ -18,3 +18,5 @@ perf.data.old
 *.hpp
 *.cpp
 *.exe
+*.ir
+*.ssa

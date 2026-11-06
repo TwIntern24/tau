@@ -4,7 +4,8 @@ use tau_core::{
     ast::{
         Identifier,
         declaration::{FuncDecl, FuncModifiers, StructDecl},
-        origin::{ExprOrigin, Literal},
+        lookup::{CallLookup, Lookup, VarLookup},
+        origin::{Literal, Origin},
         prelude::*,
     },
     lexer::{Lexer, Source},
@@ -30,7 +31,7 @@ fn parses_from_lexer() {
         break;
       } else {
         return call();
-      };
+      }
     }
   }
   "#;
@@ -86,55 +87,54 @@ fn parses_from_lexer() {
                         Identifier::new(static_symbol!("a"), Source::new(file_id, 162..163)),
                         None,
                         literal(
-                            ExprOrigin::new(Literal::Bool(true), Source::new(file_id, 166..169)),
+                            Origin::new(Literal::Bool(true), Source::new(file_id, 166..169)),
                             (),
                         ),
                         Source::new(file_id, 158..169),
                     ),
                     while_(
                         variable(
-                            Identifier::new(static_symbol!("a"), Source::new(file_id, 182..182)),
+                            VarLookup::new(
+                                Identifier::new(
+                                    static_symbol!("a"),
+                                    Source::new(file_id, 182..182),
+                                ),
+                                Lookup::Unqualified,
+                            ),
                             (),
                         ),
-                        block(
-                            vec![expr_stmt(
-                                if_(
-                                    variable(
-                                        Identifier::new(
-                                            static_symbol!("a"),
-                                            Source::new(file_id, 196..196),
-                                        ),
-                                        (),
+                        vec![if_(
+                            variable(
+                                VarLookup::new(
+                                    Identifier::new(
+                                        static_symbol!("a"),
+                                        Source::new(file_id, 196..196),
                                     ),
-                                    break_(Source::new(file_id, 209..221)),
-                                    Some(return_(
-                                        call(
-                                            variable(
-                                                Identifier::new(
-                                                    static_symbol!("call"),
-                                                    Source::new(file_id, 246..249),
-                                                ),
-                                                (),
-                                            ),
-                                            vec![],
-                                            Source::new(file_id, 246..251),
-                                            (),
-                                        ),
-                                        Source::new(file_id, 239..259),
-                                    )),
-                                    Source::new(file_id, 193..260),
-                                    (),
+                                    Lookup::Unqualified,
                                 ),
-                                Source::new(file_id, 193..266),
-                            )],
-                            Source::new(file_id, 182..270),
-                        ),
-                        Source::new(file_id, 176..270),
+                                (),
+                            ),
+                            vec![break_(Source::new(file_id, 209..221))],
+                            Some(vec![return_(
+                                Some(call(
+                                    CallLookup::unqualified(Identifier::new(
+                                        static_symbol!("call"),
+                                        Source::new(file_id, 246..249),
+                                    )),
+                                    vec![],
+                                    Source::new(file_id, 246..251),
+                                    (),
+                                )),
+                                Source::new(file_id, 239..259),
+                            )]),
+                            Source::new(file_id, 193..265),
+                        )],
+                        Source::new(file_id, 176..269),
                     ),
                 ],
                 FuncModifiers::new(false, false),
             ),
-            Source::new(file_id, 118..274),
+            Source::new(file_id, 118..273),
         ),
     ];
     assert_eq!(ast.unwrap(), expected)

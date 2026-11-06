@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        UntypedDecl,
+        Unfold, UntypedDecl,
         declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::Expr,
         identifier::Identifier,
@@ -15,7 +15,7 @@ use crate::{
     },
 };
 use std::{fs, path::PathBuf, sync::Arc};
-use symbol_table::{GlobalSymbol, static_symbol};
+use symbol_table::GlobalSymbol;
 
 pub struct Header<'ctx> {
     context: &'ctx mut Context,
@@ -23,11 +23,10 @@ pub struct Header<'ctx> {
 }
 
 impl<'ctx> Header<'ctx> {
-    pub fn new(context: &'ctx mut Context) -> Self {
+    pub fn new(context: &'ctx mut Context, module: Identifier) -> Self {
         Self {
             context,
-            // TODO: add real module name
-            module: ModuleInterface::new(static_symbol!("")),
+            module: ModuleInterface::new(module),
         }
     }
 
@@ -55,20 +54,21 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
             filename
         };
         let content = FileCache::new(fs::read_to_string(&filename).expect("Expected to open file"));
-        let display = filename.display();
-        let file_id = self.context.store(display.to_string(), content.clone());
-        let (_ast, _env) = process_file(self.context, file_id, content.as_ref())?;
+        let file_id = self
+            .context
+            .store(filename.display().to_string(), content.clone());
+        let module_name = path.last().expect("path is not empty").symbol();
+        let (_, env) = process_file(self.context, module_name, file_id, content.as_ref())?;
 
-        // TODO: insert module
-        Ok(())
+        self.module.declare_module(env.unfold())
     }
 
-    fn visit_struct(&mut self, structure: &'a StructDecl, source: Source) -> Self::Output {
-        let mut struct_ = StructInterface::new(structure.name.symbol(), source);
+    fn visit_struct(&mut self, structure: &'a StructDecl, _: Source) -> Self::Output {
+        let mut struct_ = StructInterface::new(structure.name.clone());
         for (field_name, field_type) in &structure.fields {
             struct_.declare_associaten(field_name, field_type.clone())?;
         }
-        self.module.declare_type(
+        self.module.declare_associated(
             &structure.name,
             named(
                 GlobalSymbol::from(structure.name.name()),
@@ -85,7 +85,7 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
             arguments.push(type_.clone());
         }
         self.module
-            .declare_var(&func.name, fn_(arguments, func.return_type.clone()))
+            .declare_associated(&func.name, fn_(arguments, func.return_type.clone()))
     }
 
     fn visit_const(
@@ -95,6 +95,6 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
         _: &Expr<Self::Type>,
         _: Source,
     ) -> Self::Output {
-        self.module.declare_var(name, type_.clone())
+        self.module.declare_associated(name, type_.clone())
     }
 }

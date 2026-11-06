@@ -9,7 +9,7 @@ use std::{
     result,
 };
 
-pub type DynResult = std::result::Result<(), Box<dyn std::fmt::Debug>>;
+pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// All results throw our error type.
 pub type Result<T> = result::Result<T, Error>;
@@ -34,34 +34,35 @@ impl AsRef<str> for FileCache {
 pub type FileDb = SimpleFiles<String, FileCache>;
 pub type FileId = usize; // <FileDb as Files>::FileId
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Default)]
 pub struct Error(Vec<Diagnostic<FileId>>);
 
 impl Error {
-    pub fn new(diagnostics: Vec<Diagnostic<FileId>>) -> Self {
-        Error(diagnostics)
-    }
-
-    pub fn with_diagnostic(diagnostic: Diagnostic<FileId>) -> Self {
+    pub fn new(diagnostic: Diagnostic<FileId>) -> Self {
         Self(vec![diagnostic])
     }
 
-    pub fn concat(self, next: Self) -> Self {
-        let mut m = self.0;
-        let mut n = next.0;
-        m.append(&mut n);
-        Error(m)
+    pub fn push(&mut self, diagnostic: Diagnostic<FileId>) {
+        self.0.push(diagnostic);
     }
 
-    pub fn after(self, prev: Option<Self>) -> Option<Self> {
-        if let Some(err) = prev {
-            return Some(err.concat(self));
-        }
-        Some(self)
+    pub fn extend(&mut self, other: Self) {
+        self.0.extend(other.0);
+    }
+
+    pub fn add_label(&mut self, label: Label<FileId>) {
+        let labels = &mut self.0.last_mut().unwrap().labels;
+        labels.push(label)
     }
 
     pub fn diagnostics(&self) -> &Vec<Diagnostic<FileId>> {
         &self.0
+    }
+}
+
+impl From<Vec<Diagnostic<FileId>>> for Error {
+    fn from(value: Vec<Diagnostic<FileId>>) -> Self {
+        Self(value)
     }
 }
 

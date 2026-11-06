@@ -6,7 +6,7 @@ use tau_core::{
         expression::Expr,
         identifier::Identifier,
     },
-    error,
+    error::DynResult,
     generator::Generator,
     lexer::Source,
     type_::Typed,
@@ -15,8 +15,8 @@ use tau_core::{
 pub struct CHeaderGenerator;
 
 impl<'a> Generator<'a> for CHeaderGenerator {
-    fn generate(&mut self, ast: &'a [Decl<Typed>], output: &std::path::Path) -> error::Result<()> {
-        let mut file = File::create(output).expect("error reading file");
+    fn generate(&mut self, ast: &'a [Decl<Typed>], output: &std::path::Path) -> DynResult<()> {
+        let mut file = File::create(output)?;
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");
         let module_name = path_buf
@@ -33,8 +33,7 @@ impl<'a> Generator<'a> for CHeaderGenerator {
         write!(
             file,
             "#ifndef {macro_name}\n#define {macro_name}\n\n{declarations}\n\n#endif\n"
-        )
-        .unwrap();
+        )?;
         Ok(())
     }
 }

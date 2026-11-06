@@ -4,6 +4,7 @@ members = [
   "compiler-cli",
   "compiler-core",
   "generator-c",
+  "generator-qbe",
   "tau-bin",
   "test-cli",
   "test-core",

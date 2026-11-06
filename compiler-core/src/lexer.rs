@@ -26,8 +26,8 @@ impl<'a> Lexer<'a> {
             start: 0,
             last: None,
         };
-        // We need to skip leading spaces so that the lexer directly starts at the first
-        // token.
+        // We need to skip leading spaces so that the lexer directly starts at
+        // the first token.
         lexer.skip_space();
         lexer
     }
@@ -43,7 +43,13 @@ impl<'a> Lexer<'a> {
             ']' => TokenType::BracketRight,
             ',' => TokenType::Comma,
             '.' => TokenType::Dot,
-            ':' => TokenType::Colon,
+            ':' => {
+                if self.matchc(':') {
+                    TokenType::Access
+                } else {
+                    TokenType::Colon
+                }
+            }
             ';' => TokenType::Semicolon,
             '+' => {
                 if self.matchc('=') {
@@ -137,8 +143,8 @@ impl<'a> Lexer<'a> {
                 }
             }
         };
-        // When we call this method again, we expect that is points again at the next
-        // non-space character.
+        // When we call this method again, we expect that is points again at the
+        // next non-space character.
         self.skip_space();
         Ok(Token::new(token_type, self.source()))
     }
@@ -266,7 +272,7 @@ impl<'a> Lexer<'a> {
         self.chars
             .next()
             .map(|v| v.1)
-            .ok_or_else(|| Error::new(vec![Diagnostic::error().with_message("unexpected eof")]))
+            .ok_or_else(|| Error::new(Diagnostic::error().with_message("unexpected eof")))
     }
 
     fn end(&self) -> usize {

@@ -3,7 +3,7 @@ use crate::{
     lexer::Source,
     type_::Type,
 };
-use std::{boxed::Box, sync::Arc};
+use std::sync::Arc;
 
 #[derive(PartialEq, Debug)]
 pub struct Stmt<T> {
@@ -38,12 +38,17 @@ pub enum StmtKind<T> {
         initializer: Expr<T>,
     },
     Return {
-        value: Expr<T>,
+        value: Option<Expr<T>>,
     },
     Break,
+    If {
+        condition: Expr<T>,
+        if_branch: Vec<Stmt<T>>,
+        else_branch: Option<Vec<Stmt<T>>>,
+    },
     While {
         condition: Expr<T>,
-        body: Box<Stmt<T>>,
+        body: Vec<Stmt<T>>,
     },
     ExprStmt(Expr<T>),
 }
@@ -62,6 +67,11 @@ pub trait StmtVisitor<'a> {
             } => self.visit_let(name, declared, initializer),
             StmtKind::Return { value } => self.visit_return(value),
             StmtKind::Break => self.visit_break(),
+            StmtKind::If {
+                condition,
+                if_branch,
+                else_branch,
+            } => self.visit_if(condition, if_branch, else_branch),
             StmtKind::While { condition, body } => self.visit_while(condition, body),
             StmtKind::ExprStmt(expr) => self.visit_expr_stmt(expr),
         }
@@ -76,14 +86,21 @@ pub trait StmtVisitor<'a> {
         initializer: &'a Expr<Self::Type>,
     ) -> Self::Output;
 
-    fn visit_return(&mut self, value: &'a Expr<Self::Type>) -> Self::Output;
+    fn visit_return(&mut self, value: &'a Option<Expr<Self::Type>>) -> Self::Output;
 
     fn visit_break(&mut self) -> Self::Output;
+
+    fn visit_if(
+        &mut self,
+        condition: &'a Expr<Self::Type>,
+        if_branch: &'a Vec<Stmt<Self::Type>>,
+        else_branch: &'a Option<Vec<Stmt<Self::Type>>>,
+    ) -> Self::Output;
 
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Box<Stmt<Self::Type>>,
+        body: &'a Vec<Stmt<Self::Type>>,
     ) -> Self::Output;
 
     fn visit_expr_stmt(&mut self, expr: &'a Expr<Self::Type>) -> Self::Output;
@@ -104,6 +121,11 @@ pub trait StmtFolder {
             } => self.fold_let(name, declared, initializer, source),
             StmtKind::Return { value } => self.fold_return(value, source),
             StmtKind::Break => self.fold_break(source),
+            StmtKind::If {
+                condition,
+                if_branch,
+                else_branch,
+            } => self.fold_if(condition, if_branch, else_branch, source),
             StmtKind::While { condition, body } => self.fold_while(condition, body, source),
             StmtKind::ExprStmt(expr) => self.fold_expr_stmt(expr, source),
         }
@@ -119,14 +141,22 @@ pub trait StmtFolder {
         source: Source,
     ) -> Self::Output;
 
-    fn fold_return(&mut self, value: Expr<Self::Type>, source: Source) -> Self::Output;
+    fn fold_return(&mut self, value: Option<Expr<Self::Type>>, source: Source) -> Self::Output;
 
     fn fold_break(&mut self, source: Source) -> Self::Output;
+
+    fn fold_if(
+        &mut self,
+        condition: Expr<Self::Type>,
+        if_branch: Vec<Stmt<Self::Type>>,
+        else_branch: Option<Vec<Stmt<Self::Type>>>,
+        source: Source,
+    ) -> Self::Output;
 
     fn fold_while(
         &mut self,
         condition: Expr<Self::Type>,
-        body: Box<Stmt<Self::Type>>,
+        body: Vec<Stmt<Self::Type>>,
         source: Source,
     ) -> Self::Output;
 

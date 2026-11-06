@@ -1,9 +1,9 @@
+use crate::code_gen::CodeGen;
 use bpaf::*;
 use std::{env, io, path::PathBuf};
+use symbol_table::{GlobalSymbol, static_symbol};
 
-use crate::code_gen::CodeGen;
-
-#[derive(Debug, Clone, Bpaf, Default)]
+#[derive(Debug, Clone, Bpaf)]
 #[bpaf(options)]
 pub struct Options {
     #[bpaf(
@@ -21,9 +21,11 @@ pub struct Options {
     #[bpaf(
         argument("NAME"),
         help("Specify the NAME of the crate being built"),
-        fallback(String::default())
+        fallback(static_symbol!(""))
     )]
-    pub crate_name: String,
+    pub crate_name: GlobalSymbol,
+    #[bpaf(argument("NAME"), help("Specify the NAME of the crate being built"))]
+    pub module_name: Option<GlobalSymbol>,
     #[bpaf(
         short('C'),
         long("codegen"),
@@ -41,7 +43,8 @@ impl Options {
         input: PathBuf,
         out_dir: Option<PathBuf>,
         output: Option<PathBuf>,
-        crate_name: String,
+        crate_name: GlobalSymbol,
+        module_name: Option<GlobalSymbol>,
         code_gen: CodeGen,
     ) -> Self {
         Self {
@@ -49,6 +52,7 @@ impl Options {
             out_dir,
             output,
             crate_name,
+            module_name,
             code_gen,
         }
     }
@@ -67,11 +71,33 @@ impl Options {
         self.output.as_ref().unwrap_or_else(|| self.input())
     }
 
-    pub fn crate_name(&self) -> &str {
-        &self.crate_name
+    pub fn crate_name(&self) -> GlobalSymbol {
+        self.crate_name
+    }
+
+    pub fn module_name(&self) -> GlobalSymbol {
+        self.module_name.unwrap_or_else(|| {
+            self.input()
+                .file_prefix()
+                .map(|os_str| format!("{}", os_str.display()))
+                .map_or_else(|| static_symbol!(""), |string| GlobalSymbol::new(string))
+        })
     }
 
     pub fn code_gen(&self) -> &CodeGen {
         &self.code_gen
+    }
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            input: Default::default(),
+            out_dir: Default::default(),
+            output: Default::default(),
+            crate_name: static_symbol!(""),
+            module_name: Default::default(),
+            code_gen: Default::default(),
+        }
     }
 }

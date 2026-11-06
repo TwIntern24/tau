@@ -210,6 +210,30 @@ impl Type {
             _ => false,
         }
     }
+
+    pub fn is_aggregate(&self) -> bool {
+        match self {
+            Self::Named { name, .. } => !matches!(
+                name.as_str(),
+                "str"
+                    | "void"
+                    | "bool"
+                    | "u8"
+                    | "u16"
+                    | "u32"
+                    | "u64"
+                    | "i8"
+                    | "i16"
+                    | "i32"
+                    | "i64"
+                    | "f32"
+                    | "f64"
+            ),
+            Self::Array { .. } => true,
+            Self::Var { type_ } => type_.borrow().is_aggregate(),
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Type {

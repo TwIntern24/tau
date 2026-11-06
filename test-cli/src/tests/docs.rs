@@ -48,7 +48,7 @@ fn update_doc() {
     let mut man = options.render_manpage(
         "tau",
         Section::General,
-        Some("31 Oct 2026"),
+        Some("6 Nov 2026"),
         Some("tau-lang"),
         Some("tau"),
     );

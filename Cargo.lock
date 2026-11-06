@@ -78,6 +78,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qbe"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7a68eeaf824d0a6cf7acb46ce5015fc90dae1520126b18330957e65117d0107"
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,8 +168,10 @@ version = "0.1.0"
 dependencies = [
  "bpaf",
  "codespan-reporting",
+ "symbol_table",
  "tau-core",
  "tau-generator-c",
+ "tau-generator-qbe",
 ]
 
 [[package]]
@@ -178,6 +186,15 @@ dependencies = [
 name = "tau-generator-c"
 version = "0.1.0"
 dependencies = [
+ "tau-core",
+]
+
+[[package]]
+name = "tau-generator-qbe"
+version = "0.1.0"
+dependencies = [
+ "qbe",
+ "symbol_table",
  "tau-core",
 ]
 

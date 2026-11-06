@@ -3,7 +3,8 @@ use crate::{
         declaration::{Decl, DeclKind, FuncDecl, StructDecl},
         expression::{Expr, ExprKind},
         identifier::Identifier,
-        origin::{BinaryOp, ExprOrigin, Literal, UnaryOp},
+        lookup::{CallLookup, VarLookup},
+        origin::{BinaryOp, Literal, Origin, UnaryOp},
         statement::{Stmt, StmtKind},
     },
     lexer::Source,
@@ -53,7 +54,7 @@ pub fn let_<T>(
     )
 }
 
-pub fn return_<T>(value: Expr<T>, source: Source) -> Stmt<T> {
+pub fn return_<T>(value: Option<Expr<T>>, source: Source) -> Stmt<T> {
     Stmt::new(StmtKind::Return { value }, source)
 }
 
@@ -61,21 +62,31 @@ pub fn break_<T>(source: Source) -> Stmt<T> {
     Stmt::new(StmtKind::Break, source)
 }
 
-pub fn while_<T>(condition: Expr<T>, body: Stmt<T>, source: Source) -> Stmt<T> {
+pub fn if_<T>(
+    condition: Expr<T>,
+    if_branch: Vec<Stmt<T>>,
+    else_branch: Option<Vec<Stmt<T>>>,
+    source: Source,
+) -> Stmt<T> {
     Stmt::new(
-        StmtKind::While {
+        StmtKind::If {
             condition,
-            body: Box::new(body),
+            if_branch,
+            else_branch,
         },
         source,
     )
+}
+
+pub fn while_<T>(condition: Expr<T>, body: Vec<Stmt<T>>, source: Source) -> Stmt<T> {
+    Stmt::new(StmtKind::While { condition, body }, source)
 }
 
 pub fn expr_stmt<T>(expr: Expr<T>, source: Source) -> Stmt<T> {
     Stmt::new(StmtKind::ExprStmt(expr), source)
 }
 
-pub fn unary<T>(operator: ExprOrigin<UnaryOp>, right: Expr<T>, type_: T) -> Expr<T> {
+pub fn unary<T>(operator: Origin<UnaryOp>, right: Expr<T>, type_: T) -> Expr<T> {
     Expr::new(ExprKind::Unary {
         operator,
         right: Box::new(right),
@@ -83,12 +94,7 @@ pub fn unary<T>(operator: ExprOrigin<UnaryOp>, right: Expr<T>, type_: T) -> Expr
     })
 }
 
-pub fn binary<T>(
-    left: Expr<T>,
-    operator: ExprOrigin<BinaryOp>,
-    right: Expr<T>,
-    type_: T,
-) -> Expr<T> {
+pub fn binary<T>(left: Expr<T>, operator: Origin<BinaryOp>, right: Expr<T>, type_: T) -> Expr<T> {
     Expr::new(ExprKind::Binary {
         left: Box::new(left),
         operator,
@@ -97,9 +103,14 @@ pub fn binary<T>(
     })
 }
 
-pub fn call<T>(callee: Expr<T>, arguments: Vec<Expr<T>>, source: Source, type_: T) -> Expr<T> {
+pub fn call<T>(
+    lookup: CallLookup<T>,
+    arguments: Vec<Expr<T>>,
+    source: Source,
+    type_: T,
+) -> Expr<T> {
     Expr::new(ExprKind::Call {
-        callee: Box::new(callee),
+        lookup,
         arguments,
         source,
         type_,
@@ -143,26 +154,26 @@ pub fn create_struct<T>(
     })
 }
 
-pub fn if_<T>(
+pub fn ternary<T>(
     condition: Expr<T>,
-    if_branch: Stmt<T>,
-    else_branch: Option<Stmt<T>>,
+    if_branch: Expr<T>,
+    else_branch: Expr<T>,
     source: Source,
     type_: T,
 ) -> Expr<T> {
-    Expr::new(ExprKind::If {
+    Expr::new(ExprKind::Ternary {
         condition: Box::new(condition),
         if_branch: Box::new(if_branch),
-        else_branch: else_branch.map(|b| Box::new(b)),
+        else_branch: Box::new(else_branch),
         source,
         type_,
     })
 }
 
-pub fn literal<T>(literal: ExprOrigin<Literal>, type_: T) -> Expr<T> {
+pub fn literal<T>(literal: Origin<Literal>, type_: T) -> Expr<T> {
     Expr::new(ExprKind::Literal { literal, type_ })
 }
 
-pub fn variable<T>(name: Identifier, type_: T) -> Expr<T> {
-    Expr::new(ExprKind::Variable { name, type_ })
+pub fn variable<T>(lookup: VarLookup, type_: T) -> Expr<T> {
+    Expr::new(ExprKind::Variable { lookup, type_ })
 }

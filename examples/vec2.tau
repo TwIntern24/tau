@@ -1,13 +1,11 @@
 extern fn sqrt(v: f64) -> f64;
 
-extern fn puts(v: str);
+extern fn puts(v: str) -> i32;
 
 struct Vec2 {
     x: f64,
     y: f64
 }
-
-const ZERO: Vec2 = Vec2 { x=0, y=0 };
 
 fn vec2(x: f64, y: f64) -> Vec2 =
     Vec2 { x=x, y=y }
@@ -24,10 +22,17 @@ fn length(v: Vec2) -> f64 =
 fn norm(v: Vec2) -> Vec2 =
     let len = length(v);
     in
-        if (len == 0.0) { ZERO }
+        if (len == 0.0) { vec2(0.0, 0.0) }
         else { vec2(v.x / len, v.y / len) }
 
-io fn main() {
-    let _ = add(vec2(3.0, 4.0), vec2(4.0, -2.0));
-    puts("Hello, World!");
+io fn main() -> i32 {
+    let len = length(add(vec2(3.0, 4.0), vec2(4.0, -2.0)));
+    if (len > 0.0) {
+        puts("vector len is positive");
+    } else if (len < 0.0) {
+        puts("vector is the zero vector")
+    } else {
+        puts("vector len should always be >= 0")
+    }
+    return 0;
 }

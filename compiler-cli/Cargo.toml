@@ -13,5 +13,7 @@ c = ["dep:tau-generator-c"]
 # The pure compiler
 tau-core = { path = "../compiler-core" }
 tau-generator-c = { path = "../generator-c", optional = true }
+tau-generator-qbe = { path = "../generator-qbe" }
 codespan-reporting = "0.13.1"
 bpaf = { version = "0.9.28", features = ["autocomplete", "derive"] }
+symbol_table = { version = "0.5.0", features = ["global"] }

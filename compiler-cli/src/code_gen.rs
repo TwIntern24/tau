@@ -1,10 +1,15 @@
 use std::str::FromStr;
 
+/// Codegen options that the CLI supports for generating code.
+/// The generator can be changed by passing the `-C` flag.
 #[derive(Debug, Clone)]
 pub enum CodeGen {
+    /// Transpiler for generating C code
     #[cfg(feature = "c")]
     C,
+    /// Cranelift <https://cranelift.dev/>
     Cranelift,
+    /// QBE <https://c9x.me/compile/>
     #[cfg(feature = "qbe")]
     Qbe,
 }

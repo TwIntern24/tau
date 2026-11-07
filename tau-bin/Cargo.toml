@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Karl Zschiebsch"]
 edition = "2024"
 
-description = "Compiler fot the Tau language."
+description = "Compiler for the Tau language."
 readme = "README.md"
 license-file = "../LICENSE"
 homepage = "https://codeberg.org/tau-lang"

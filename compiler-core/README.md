@@ -12,7 +12,13 @@ The compiler is modular and split into multiple components. You can replace ever
 
 - **Lexer** – Reads the tokens from an input
 - **Parser** — Parses the input to an abstract syntax tree (ast)
-- **Semantic Analyzer** — Performs basic semantic analysis and type checking over the ast
+- **Header** – Tau neither wants header files like C nor that the order of
+  declaration matters like in Python. To achieve that, the compiler first
+  runs the Header step that extract all declarations like type definitions
+  or functions.
+- **Semantic Analyzer** — Performs basic semantic analysis and type checking
+  over the ast. If all checks pass, it is guaranteed that the input code is
+  semantically valid.
 - **Translator** – Lowers the ast to an immediate representation (ir)
 
 ## Contributing

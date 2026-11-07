@@ -18,8 +18,7 @@ use crate::{
         value::{Value, ValueKind},
     },
     lexer::Source,
-    type_::{self, Type, TypeVar, prelude::*},
-    uid::UniqueIdGenerator,
+    type_::{self, Type, TypeVar, prelude::*, uid::UniqueIdGenerator},
 };
 use std::{collections::HashMap, mem, ops::Deref, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};

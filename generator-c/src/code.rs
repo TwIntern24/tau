@@ -2,7 +2,7 @@ use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        TypedDecl, TypedStmt,
+        TypedAst, TypedStmt,
         declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
@@ -11,7 +11,6 @@ use tau_core::{
         statement::{Stmt, StmtVisitor},
     },
     error::DynResult,
-    generator::Generator,
     lexer::Source,
     type_::Typed,
 };
@@ -25,22 +24,7 @@ impl<'a> CCodeGenerator {
         CCodeGenerator { indent: 0 }
     }
 
-    fn visit_idented(&mut self, stmt: &TypedStmt) -> CSourceCode {
-        let code = self.visit_stmt(stmt);
-        CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
-    }
-
-    fn begin_scope(&mut self) {
-        self.indent += 1;
-    }
-
-    fn end_scope(&mut self) {
-        self.indent -= 1;
-    }
-}
-
-impl<'a> Generator<'a> for CCodeGenerator {
-    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> DynResult<()> {
+    pub fn transpile(&mut self, ast: &'a TypedAst, output: &std::path::Path) -> DynResult<()> {
         let mut file = File::create(output)?;
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("h");
@@ -62,6 +46,19 @@ impl<'a> Generator<'a> for CCodeGenerator {
 
         write!(file, "#include \"{header_file}\"\n\n{declarations}\n")?;
         Ok(())
+    }
+
+    fn visit_idented(&mut self, stmt: &TypedStmt) -> CSourceCode {
+        let code = self.visit_stmt(stmt);
+        CSourceCode::from(format!("{}{}", "\t".repeat(self.indent), code))
+    }
+
+    fn begin_scope(&mut self) {
+        self.indent += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.indent -= 1;
     }
 }
 

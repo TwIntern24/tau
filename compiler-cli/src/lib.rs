@@ -1,12 +1,35 @@
+//! # Rust CLI
+//!
+//! This is the default CLI for the Tau programming language.
+//!
+//! ## Basic example
+//!
+//! ```rust
+//! fn main() {
+//!     tau_cli::main();
+//! }
+//! ```
+//!
+//! ## Optional features
+//!
+//! - `c` _(enabled by default)_ – Transpiler for Tau to C code
+//! - `qbe` _(enabled by default)_ – Compiles the Tau ir to [QBE](https://c9x.me/compile/)
+//! - `bright-color` – Enables bright coloring
+//! - `dull-color` – Enables dull coloring
+
 #![allow(clippy::needless_return)]
 use crate::code_gen::CodeGen;
 use crate::options::{Options, options};
-use std::{fs, process::exit, time::Instant};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::exit,
+    time::Instant,
+};
 use tau_core::{
     ast::Unfold,
     context::Context,
     error::{DynResult, FileCache},
-    generator::{Compiler, output},
     process_file,
     translator::Translator,
 };
@@ -17,6 +40,8 @@ use tau_generator_qbe::QbeEmitter;
 pub mod code_gen;
 pub mod options;
 
+/// Parses the command line options and compiles the file.
+/// This will handle any errors and measure the elapsed time.
 pub fn main() {
     let args = options().run();
     let now = Instant::now();
@@ -33,6 +58,20 @@ pub fn main() {
     }
 }
 
+/// Compiles a single file from the given context and cli arguments.
+///
+/// # Examples
+///
+/// ```rust
+/// fn main() {
+///     let args = options().run();
+///     let mut context = Context::new();
+///     if let Err(message) = compile_file(&mut context, &args) {
+///         println!("{}", message);
+///         exit(2);
+///     }
+/// }
+/// ```
 pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
     let filename = args.input();
     let content = fs::read_to_string(&filename)?;
@@ -44,11 +83,10 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
             #[cfg(feature = "c")]
             CodeGen::C => {
                 let folder = &args.out_dir()?;
-                let compiler = Compiler::new(&ast);
                 let header_output = output(folder, args.output(), "h");
-                compiler.compile(CHeaderGenerator, &header_output)?;
+                CHeaderGenerator.transpile(&ast, &header_output)?;
                 let code_output = output(folder, args.output(), "c");
-                compiler.compile(CCodeGenerator::new(), &code_output)
+                CCodeGenerator::new().transpile(&ast, &code_output)
             }
             CodeGen::Cranelift => unimplemented!(),
             CodeGen::Qbe => {
@@ -60,4 +98,11 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
         },
         Err(error) => context.handle(&error),
     }
+}
+
+fn output(folder: &Path, path: &Path, extension: &str) -> PathBuf {
+    let mut path_buf = PathBuf::from(folder);
+    path_buf.push(path);
+    path_buf.set_extension(extension);
+    return path_buf;
 }

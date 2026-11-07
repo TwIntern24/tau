@@ -11,8 +11,6 @@ pub mod declaration;
 pub mod expression;
 pub mod identifier;
 pub mod lookup;
-#[macro_use]
-pub mod macros;
 pub mod origin;
 pub mod prelude;
 pub mod statement;
@@ -59,7 +57,9 @@ where
 pub type UntypedExpr = Expr<Untyped>;
 pub type UntypedStmt = Stmt<Untyped>;
 pub type UntypedDecl = Decl<Untyped>;
+pub type UntypedAst = Vec<UntypedDecl>;
 
 pub type TypedExpr = Expr<Arc<Type>>;
 pub type TypedStmt = Stmt<Arc<Type>>;
 pub type TypedDecl = Decl<Arc<Type>>;
+pub type TypedAst = Vec<TypedDecl>;

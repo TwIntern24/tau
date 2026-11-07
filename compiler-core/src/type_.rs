@@ -9,6 +9,7 @@ pub mod expression;
 pub mod prelude;
 pub mod statement;
 pub mod type_var;
+pub mod uid;
 
 pub use crate::type_::prelude::*;
 pub use type_var::{TypeVar, collapse_links};

@@ -1,7 +1,6 @@
 use crate::{
     error::{DynResult, Error, FileCache, FileDb, FileId},
-    type_::environment::ModuleInterface,
-    uid::UniqueIdGenerator,
+    type_::{environment::ModuleInterface, uid::UniqueIdGenerator},
 };
 use codespan_reporting::{
     diagnostic::Severity,

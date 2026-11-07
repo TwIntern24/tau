@@ -2,8 +2,7 @@ use crate::{
     ast::{Location, Unfold, identifier::Identifier, lookup::Lookup, origin::Origin},
     error::{Error, Result, diagnostic, error, label},
     lexer::Source,
-    type_::{Typed, prelude::*},
-    uid::UniqueIdGenerator,
+    type_::{Typed, prelude::*, uid::UniqueIdGenerator},
 };
 use std::{collections::HashMap, sync::Arc};
 use symbol_table::GlobalSymbol;

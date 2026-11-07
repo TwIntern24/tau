@@ -24,7 +24,7 @@ pub struct Options {
         fallback(static_symbol!(""))
     )]
     pub crate_name: GlobalSymbol,
-    #[bpaf(argument("NAME"), help("Specify the NAME of the crate being built"))]
+    #[bpaf(argument("NAME"), help("Specify the NAME of the module being built"))]
     pub module_name: Option<GlobalSymbol>,
     #[bpaf(
         short('C'),

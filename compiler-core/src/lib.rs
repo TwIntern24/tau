@@ -32,8 +32,8 @@ pub fn process_file<'ctx>(
     let lexer = Lexer::new(&content, file_id);
     let ast = Parser::new(lexer).parse()?;
     let env = Header::new(context, Identifier::new(name, Source::new(file_id, 0..0))).env(&ast)?;
-    let mut analyser = SemanticAnalyser::new(env);
-    let ast = analyser.fold_ast(ast)?;
-    let env = analyser.env();
+    let mut analyzer = SemanticAnalyser::new(env);
+    let ast = analyzer.fold_ast(ast)?;
+    let env = analyzer.env();
     Ok((ast, env))
 }

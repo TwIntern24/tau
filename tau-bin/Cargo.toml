@@ -1,5 +1,5 @@
 [package]
-name = "tau"
+name = "tau-lang"
 version = "0.1.0"
 authors = ["Karl Zschiebsch"]
 edition = "2024"
@@ -9,6 +9,10 @@ readme = "../README.md"
 license-file = "../LICENSE"
 homepage = "https://codeberg.org/tau-lang"
 repository = "https://github.com/tau-lang/tau"
+
+[[bin]]
+name = "tau"
+path = "src/main.rs"
 
 [dependencies]
 tau-lang-cli = { workspace = true }

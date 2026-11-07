@@ -156,13 +156,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tau"
-version = "0.1.0"
-dependencies = [
- "tau-lang-cli",
-]
-
-[[package]]
 name = "tau-generator-c"
 version = "0.1.0"
 dependencies = [
@@ -176,6 +169,13 @@ dependencies = [
  "qbe",
  "symbol_table",
  "tau-lang-core",
+]
+
+[[package]]
+name = "tau-lang"
+version = "0.1.0"
+dependencies = [
+ "tau-lang-cli",
 ]
 
 [[package]]

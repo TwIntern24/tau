@@ -1,3 +1,13 @@
+//! Emits QBE code.
+//!
+//! This generator creates a `.ssa` file. You must currently generate the
+//! assembly code yourself by invoking the QBE binary and link it with the
+//! linker of your choice:
+//!
+//! ```sh
+//! qbe -o main.s main.ssa && cc -o main main.s
+//! ```
+
 use qbe::{Block, DataDef, Function, Module, TypeDef};
 use std::{collections::HashMap, mem, sync::Arc};
 use symbol_table::{GlobalSymbol, static_symbol};
@@ -14,6 +24,9 @@ use tau_core::{
     type_::{self, Typed},
 };
 
+/// Creates a new empty QBE function. This function has an empty name. Please
+/// note that empty names are not valid and the name must be set before the
+/// function ends.
 const fn function() -> Function {
     Function {
         linkage: qbe::Linkage {
@@ -29,6 +42,9 @@ const fn function() -> Function {
     }
 }
 
+/// Creates a new empty QBE block. This block has an empty name. Please note
+/// that empty names are not valid and the name must be set before the block
+/// ends.
 const fn block() -> Block {
     Block {
         label: String::new(),
@@ -36,6 +52,8 @@ const fn block() -> Block {
     }
 }
 
+/// Code emitter for QBE. Each emitter only emits a single module. Using the
+/// same emitter to fold multiple Tau modules is undefined behavior.
 #[derive(Default)]
 pub struct QbeEmitter {
     module: Module,
@@ -46,6 +64,9 @@ pub struct QbeEmitter {
 }
 
 impl QbeEmitter {
+    /// Creates a new emitter and loads the build in types. If you don't want to
+    /// load build in types automatically, you can use default to create an
+    /// empty emitter.
     pub fn new() -> Self {
         Self {
             cache: {

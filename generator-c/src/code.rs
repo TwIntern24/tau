@@ -1,3 +1,5 @@
+//! Generates C code from a Tau ast.
+
 use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
@@ -163,7 +165,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
     ) -> CSourceCode {
         let fields = visit_vec(fields, |x| format!("{}", self.visit_expr(x)), ", ");
         let type_ = CSourceCode::from(type_);
-        format!("{type_}{{{fields}}}").into()
+        format!("({type_}) {{{fields}}}").into()
     }
 
     fn visit_create_struct(

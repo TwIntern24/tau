@@ -1,4 +1,4 @@
-//! # Rust CLI
+//! # Tau CLI
 //!
 //! This is the default CLI for the Tau programming language.
 //!

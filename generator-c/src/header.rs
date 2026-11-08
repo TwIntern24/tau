@@ -1,3 +1,5 @@
+//! Generates C headers from a Tau ast.
+
 use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{

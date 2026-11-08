@@ -269,12 +269,15 @@ impl fmt::Display for Type {
     }
 }
 
+unsafe impl Send for Type {}
+unsafe impl Sync for Type {}
+
 /// Unify two types that should be the same.
 /// Any unbound type variables will be linked to the other type as they are the
 /// same.
 ///
 /// It two types are found to not be the same an error is returned.
-pub fn unify(t1: Arc<Type>, t2: Arc<Type>) -> Result<(), Diagnostic<FileId>> {
+pub fn unify(t1: Typed, t2: Typed) -> Result<(), Diagnostic<FileId>> {
     if t1 == t2 {
         return Ok(());
     }
@@ -412,11 +415,11 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId
     }
 }
 
-pub fn generalise(t: Arc<Type>) -> Arc<Type> {
+pub fn generalize(t: Typed) -> Typed {
     match t.deref() {
         Type::Var { type_ } => match type_.borrow().deref() {
             TypeVar::Unbound { id } => generic_var(*id),
-            TypeVar::Link { type_ } => generalise(type_.clone()),
+            TypeVar::Link { type_ } => generalize(type_.clone()),
             TypeVar::Generic { .. } => Arc::new(Type::Var {
                 type_: type_.clone(),
             }),
@@ -425,30 +428,21 @@ pub fn generalise(t: Arc<Type>) -> Arc<Type> {
         Type::Named { name, arguments } => {
             let arguments = arguments
                 .iter()
-                .map(|type_| generalise(type_.clone()))
+                .map(|type_| generalize(type_.clone()))
                 .collect();
-            Arc::new(Type::Named {
-                name: name.clone(),
-                arguments,
-            })
+            named(*name, arguments)
         }
 
-        Type::Fn { arguments, return_ } => Arc::new(Type::Fn {
-            arguments: arguments
+        Type::Fn { arguments, return_ } => fn_(
+            arguments
                 .iter()
-                .map(|type_| generalise(type_.clone()))
+                .map(|type_| generalize(type_.clone()))
                 .collect(),
-            return_: generalise(return_.clone()),
-        }),
+            generalize(return_.clone()),
+        ),
 
-        Type::Array { type_, size } => Arc::new(Type::Array {
-            size: *size,
-            type_: generalise(type_.clone()),
-        }),
+        Type::Array { type_, size } => array(generalize(type_.clone()), *size),
 
-        Type::Ptr { type_, unchecked } => Arc::new(Type::Ptr {
-            unchecked: *unchecked,
-            type_: generalise(type_.clone()),
-        }),
+        Type::Ptr { type_, unchecked } => ptr(generalize(type_.clone()), *unchecked),
     }
 }

@@ -19,7 +19,7 @@ impl Identifier {
     }
 
     pub fn name(&self) -> &str {
-        &self.name.as_str()
+        self.name.as_str()
     }
 
     pub fn symbol(&self) -> GlobalSymbol {
@@ -35,7 +35,7 @@ impl Location for Identifier {
 
 impl Display for Identifier {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
-        formatter.write_str(&self.name())
+        formatter.write_str(self.name())
     }
 }
 

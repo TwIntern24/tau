@@ -80,7 +80,7 @@ pub fn main() {
 /// ```
 pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
     let filename = args.input();
-    let content = fs::read_to_string(&filename)?;
+    let content = fs::read_to_string(filename)?;
     let cache = FileCache::new(content);
     let display = filename.display();
     let file_id = context.store(display.to_string(), cache.clone());
@@ -99,7 +99,7 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
                 let output = output(&args.out_dir()?, args.output(), "ssa");
                 let mut emitter = QbeEmitter::new();
                 Translator::new(&mut emitter).fold_ast(ast);
-                Ok(fs::write(output, &format!("{}", emitter.unfold()))?)
+                Ok(fs::write(output, format!("{}", emitter.unfold()))?)
             }
         },
         Err(error) => context.handle(&error),

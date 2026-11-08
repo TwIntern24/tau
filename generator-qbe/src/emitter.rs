@@ -36,6 +36,7 @@ const fn block() -> Block {
     }
 }
 
+#[derive(Default)]
 pub struct QbeEmitter {
     module: Module,
     function: Function,
@@ -47,9 +48,6 @@ pub struct QbeEmitter {
 impl QbeEmitter {
     pub fn new() -> Self {
         Self {
-            module: Module::new(),
-            function: function(),
-            block: block(),
             cache: {
                 let mut cache = HashMap::new();
                 for (k, v) in [
@@ -71,6 +69,7 @@ impl QbeEmitter {
                 }
                 cache
             },
+            ..Default::default()
         }
     }
 
@@ -129,12 +128,12 @@ impl QbeEmitter {
             type_::Type::Named { name, .. } => self
                 .cache
                 .get(name)
-                .expect(&format!("expected type {name} exists"))
+                .unwrap_or_else(|| panic!("expected type {name} exists"))
                 .clone(),
             type_::Type::Fn { .. } | type_::Type::Ptr { .. } => qbe::Type::Long,
             type_::Type::Array { type_, size } => {
                 let inner = self.emit_type(type_);
-                let ident = format!("{}.array.{}", &inner, size);
+                let ident = format!("{}.array.{}", inner, size);
                 let name = GlobalSymbol::from(&ident);
                 if let Some(type_) = self.cache.get(&name) {
                     type_.clone()
@@ -151,7 +150,7 @@ impl QbeEmitter {
             }
             type_::Type::Var { type_ } => match &*type_.as_ref().borrow() {
                 type_::TypeVar::Unbound { .. } | type_::TypeVar::Generic { .. } => panic!(),
-                type_::TypeVar::Link { type_ } => self.emit_type(&type_),
+                type_::TypeVar::Link { type_ } => self.emit_type(type_),
             },
         }
     }

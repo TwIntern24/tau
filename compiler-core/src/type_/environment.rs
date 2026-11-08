@@ -40,15 +40,12 @@ impl StructInterface {
     pub fn declare_item(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
         self.items
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
-            .map_or_else(
-                || Ok(()),
-                |def| {
-                    error(
-                        diagnostic("field already exists", name)
-                            .with_label(label("variable was already declared here", &def)),
-                    )
-                },
-            )
+            .map_or(Ok(()), |def| {
+                error(
+                    diagnostic("field already exists", name)
+                        .with_label(label("variable was already declared here", &def)),
+                )
+            })
     }
 
     pub fn find_item(&self, name: &Identifier) -> Result<&TypeDefinition> {
@@ -60,15 +57,12 @@ impl StructInterface {
     pub fn declare_associated(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
         self.associated
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
-            .map_or_else(
-                || Ok(()),
-                |def| {
-                    error(
-                        diagnostic("field already exists", name)
-                            .with_label(label("variable was already declared here", &def)),
-                    )
-                },
-            )
+            .map_or(Ok(()), |def| {
+                error(
+                    diagnostic("field already exists", name)
+                        .with_label(label("variable was already declared here", &def)),
+                )
+            })
     }
 
     pub fn find_associated(&self, name: &Identifier) -> Result<&TypeDefinition> {
@@ -89,7 +83,7 @@ impl Namespace for StructInterface {
 
     fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace> {
         error(
-            diagnostic(format!("structs can not contain namespaces"), name).with_label(label(
+            diagnostic("structs can not contain namespaces", name).with_label(label(
                 format!("when trying to access struct {}", self.name),
                 self,
             )),
@@ -131,10 +125,9 @@ impl ModuleInterface {
     pub fn declare_module(&mut self, module: Arc<ModuleInterface>) -> Result<()> {
         self.modules
             .insert(module.as_ref().name().symbol(), module)
-            .map_or_else(
-                || Ok(()),
-                |d| error(diagnostic("struct already exists", d.name())),
-            )
+            .map_or(Ok(()), |d| {
+                error(diagnostic("struct already exists", d.name()))
+            })
     }
 
     pub fn find_module(&self, name: &Identifier) -> Result<&Arc<ModuleInterface>> {
@@ -146,10 +139,7 @@ impl ModuleInterface {
     pub fn declare_struct(&mut self, struct_: StructInterface) -> Result<()> {
         self.structs
             .insert(struct_.name().symbol(), struct_)
-            .map_or_else(
-                || Ok(()),
-                |d| error(diagnostic("struct already exists", &d)),
-            )
+            .map_or(Ok(()), |d| error(diagnostic("struct already exists", &d)))
     }
 
     pub fn find_struct(&self, name: &GlobalSymbol) -> Option<&StructInterface> {
@@ -159,15 +149,12 @@ impl ModuleInterface {
     pub fn declare_associated(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
         self.associated
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
-            .map_or_else(
-                || Ok(()),
-                |def| {
-                    error(
-                        diagnostic("name already exists", name)
-                            .with_label(label("name was already declared here", &def)),
-                    )
-                },
-            )
+            .map_or(Ok(()), |def| {
+                error(
+                    diagnostic("name already exists", name)
+                        .with_label(label("name was already declared here", &def)),
+                )
+            })
     }
 
     pub fn find_associated(&self, name: &Identifier) -> Result<&TypeDefinition> {
@@ -242,15 +229,12 @@ impl Environment {
     pub fn declare_var(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
         self.scope_mut()
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
-            .map_or_else(
-                || Ok(()),
-                |def| {
-                    error(
-                        diagnostic("variable already exists", name)
-                            .with_label(label("variable was already declared here", &def)),
-                    )
-                },
-            )
+            .map_or(Ok(()), |def| {
+                error(
+                    diagnostic("variable already exists", name)
+                        .with_label(label("variable was already declared here", &def)),
+                )
+            })
     }
 
     pub fn find_symbol(&self, lookup: &Lookup, name: &Identifier) -> Result<&TypeDefinition> {

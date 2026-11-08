@@ -15,13 +15,14 @@ use tau_core::{
     type_::Typed,
 };
 
+#[derive(Default)]
 pub struct CCodeGenerator {
     indent: usize,
 }
 
 impl<'a> CCodeGenerator {
-    pub fn new() -> CCodeGenerator {
-        CCodeGenerator { indent: 0 }
+    pub fn new() -> Self {
+        Self { indent: 0 }
     }
 
     pub fn transpile(&mut self, ast: &'a TypedAst, output: &std::path::Path) -> DynResult<()> {
@@ -35,10 +36,8 @@ impl<'a> CCodeGenerator {
             .unwrap();
 
         let declarations = visit_vec(
-            &ast.into_iter()
-                .map(|decl| self.visit_decl(decl))
-                .filter(|op| op.is_some())
-                .map(|op| op.expect("Should only contain some."))
+            &ast.iter()
+                .filter_map(|decl| self.visit_decl(decl))
                 .collect::<Vec<CSourceCode>>(),
             |decl| format!("{}", decl),
             "\n\n",
@@ -260,17 +259,14 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_if(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        if_branch: &'a Vec<Stmt<Self::Type>>,
+        if_branch: &'a [Stmt<Self::Type>],
         else_branch: &'a Option<Vec<Stmt<Self::Type>>>,
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         let if_branch = visit_vec(if_branch, |stmt| self.visit_idented(stmt).to_string(), "");
         if let Some(else_branch) = else_branch {
-            let else_branch = visit_vec(
-                &else_branch,
-                |stmt| self.visit_idented(stmt).to_string(),
-                "",
-            );
+            let else_branch =
+                visit_vec(else_branch, |stmt| self.visit_idented(stmt).to_string(), "");
             format!("if ({condition}) {{ {if_branch} }} else {{ {else_branch} }}").into()
         } else {
             format!("if ({condition}) {{ {if_branch} }}").into()
@@ -280,7 +276,7 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Vec<Stmt<Self::Type>>,
+        body: &'a [Stmt<Self::Type>],
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         self.begin_scope();

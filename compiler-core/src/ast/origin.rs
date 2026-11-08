@@ -81,7 +81,7 @@ where
     O: PartialEq,
 {
     fn eq(&self, other: &Origin<O>) -> bool {
-        &self.kind == &other.kind && &self.source == &other.source
+        self.kind == other.kind && self.source == other.source
     }
 }
 

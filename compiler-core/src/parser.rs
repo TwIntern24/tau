@@ -49,7 +49,7 @@ where
     /// ```
     pub fn new(tokens: I) -> Parser<I> {
         Parser {
-            tokens: tokens,
+            tokens,
             declarations: Vec::new(),
             last: None,
         }
@@ -118,7 +118,7 @@ where
             TokenType::Import => self.decl_import(token),
             TokenType::Struct => self.decl_struct(token),
             token_type => error(diagnostic(
-                format!("found {:?} expected declaration", &token_type),
+                format!("found {:?} expected declaration", token_type),
                 &token,
             )),
         }
@@ -307,10 +307,7 @@ where
                 let size = match size.token_type() {
                     TokenType::Int(size) => *size as usize,
                     _ => {
-                        return error(diagnostic(
-                            format!("array size type only accepts ints"),
-                            size,
-                        ));
+                        return error(diagnostic("array size type only accepts ints", size));
                     }
                 };
                 self.consume(&TokenType::BracketRight)?;
@@ -394,7 +391,7 @@ where
         while *self.peek()?.token_type() != TokenType::BraceRight {
             statements.push(self.stmt()?);
         }
-        return Ok(statements);
+        Ok(statements)
     }
 
     fn stmt_block(&mut self) -> Result<UntypedStmt> {
@@ -886,7 +883,7 @@ where
 /// a meaningful location.
 fn with_source<T>(result: Result<T>, source: impl Into<Source>) -> Result<T> {
     result.map_err(|mut error: Error| {
-        error.add_label(label(format!("unclosed token"), source));
+        error.add_label(label("unclosed token", source));
         error
     })
 }

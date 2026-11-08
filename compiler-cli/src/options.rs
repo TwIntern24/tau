@@ -81,7 +81,7 @@ impl Options {
     pub fn out_dir(&self) -> io::Result<PathBuf> {
         self.out_dir
             .as_ref()
-            .map_or_else(|| env::current_dir(), |c| Ok(c.to_path_buf()))
+            .map_or_else(env::current_dir, |c| Ok(c.to_path_buf()))
     }
 
     /// Returns the output file, defaults to the input file.
@@ -100,7 +100,7 @@ impl Options {
             self.input()
                 .file_prefix()
                 .map(|os_str| format!("{}", os_str.display()))
-                .map_or_else(|| static_symbol!(""), |string| GlobalSymbol::new(string))
+                .map_or_else(|| static_symbol!(""), GlobalSymbol::new)
         })
     }
 

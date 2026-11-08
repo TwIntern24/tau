@@ -10,10 +10,7 @@ pub fn fn_(arguments: Vec<Arc<Type>>, return_: Arc<Type>) -> Arc<Type> {
 }
 
 pub fn named(name: GlobalSymbol, arguments: Vec<Arc<Type>>) -> Arc<Type> {
-    Arc::new(Type::Named {
-        name: name,
-        arguments,
-    })
+    Arc::new(Type::Named { name, arguments })
 }
 
 fn native(name: GlobalSymbol) -> Typed {

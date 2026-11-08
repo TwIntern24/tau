@@ -28,7 +28,7 @@ impl<'a> Lexer<'a> {
     /// later an error occurs, this is the id that is used for codespan.
     pub fn new(source: &'a str, file_id: FileId) -> Lexer<'a> {
         let mut lexer = Lexer {
-            source: source,
+            source,
             chars: source.char_indices(),
             file_id,
             start: 0,

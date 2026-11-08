@@ -72,13 +72,13 @@ pub mod type_;
 /// reported. This returns the ast together with the environment. The
 /// environment contains type information, parsed modules, etc. that were
 /// discoverd while processing the given file.
-pub fn process_file<'ctx>(
-    context: &'ctx mut Context,
+pub fn process_file(
+    context: &mut Context,
     name: GlobalSymbol,
     file_id: FileId,
     content: &str,
 ) -> Result<(Vec<TypedDecl>, Environment)> {
-    let lexer = Lexer::new(&content, file_id);
+    let lexer = Lexer::new(content, file_id);
     let ast = Parser::new(lexer).parse()?;
     let mut env =
         Header::new(context, Identifier::new(name, Source::new(file_id, 0..0))).env(&ast)?;

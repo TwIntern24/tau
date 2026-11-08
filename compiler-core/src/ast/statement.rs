@@ -93,14 +93,14 @@ pub trait StmtVisitor<'a> {
     fn visit_if(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        if_branch: &'a Vec<Stmt<Self::Type>>,
+        if_branch: &'a [Stmt<Self::Type>],
         else_branch: &'a Option<Vec<Stmt<Self::Type>>>,
     ) -> Self::Output;
 
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Vec<Stmt<Self::Type>>,
+        body: &'a [Stmt<Self::Type>],
     ) -> Self::Output;
 
     fn visit_expr_stmt(&mut self, expr: &'a Expr<Self::Type>) -> Self::Output;

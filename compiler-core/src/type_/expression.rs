@@ -330,12 +330,10 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
             };
             if *size < fields.len() {
                 return error(
-                    diagnostic(format!("number of elements exceeds size"), source).with_label(
-                        label(
-                            format!("expected at most {} elements, got {}", size, fields.len()),
-                            source,
-                        ),
-                    ),
+                    diagnostic("number of elements exceeds size", source).with_label(label(
+                        format!("expected at most {} elements, got {}", size, fields.len()),
+                        source,
+                    )),
                 );
             }
             Ok(TypedExpr::new(ExprKind::CreateArray {

@@ -9,7 +9,7 @@ pub struct CSourceCode(String);
 
 impl CSourceCode {
     pub const fn as_str(&self) -> &str {
-        &self.0.as_str()
+        self.0.as_str()
     }
 }
 
@@ -60,7 +60,7 @@ impl From<&Type> for CSourceCode {
 
 impl From<&Typed> for CSourceCode {
     fn from(typed: &Typed) -> Self {
-        CSourceCode::from(&*typed.as_ref())
+        CSourceCode::from(typed.as_ref())
     }
 }
 

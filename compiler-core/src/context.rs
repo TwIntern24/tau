@@ -35,10 +35,8 @@ impl Context {
         Self {
             files: FileDb::new(),
             writer: StandardStream::stderr(ColorChoice::Always),
-            config: Config::default(),
             ids: UniqueIdGenerator::new(),
-            modules: HashMap::new(),
-            severity: None,
+            ..Default::default()
         }
     }
 
@@ -48,7 +46,7 @@ impl Context {
         for diagnostic in error.diagnostics() {
             self.severity = Some(
                 self.severity
-                    .map_or_else(|| diagnostic.severity, |s| s.max(diagnostic.severity)),
+                    .map_or(diagnostic.severity, |s| s.max(diagnostic.severity)),
             );
             term::emit_to_write_style(
                 &mut self.writer.lock(),
@@ -112,5 +110,18 @@ impl Context {
     /// Otherwise returns none.
     pub fn severity(&self) -> Option<Severity> {
         self.severity
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            files: FileDb::default(),
+            writer: StandardStream::stderr(ColorChoice::Always),
+            config: Config::default(),
+            ids: UniqueIdGenerator::default(),
+            modules: HashMap::default(),
+            severity: None,
+        }
     }
 }

@@ -5,7 +5,7 @@
 //! ## Basic example
 //!
 //! ```rust
-//! fn main() {
+//! fn run() {
 //!     tau_cli::main();
 //! }
 //! ```
@@ -18,8 +18,10 @@
 //! - `dull-color` – Enables dull coloring
 
 #![allow(clippy::needless_return)]
-use crate::code_gen::CodeGen;
-use crate::options::{Options, options};
+use crate::{
+    code_gen::CodeGen,
+    options::{Options, options},
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -63,7 +65,11 @@ pub fn main() {
 /// # Examples
 ///
 /// ```rust
-/// fn main() {
+/// use tau_cli::{options::options, compile_file};
+/// use tau_core::context::Context;
+/// use std::process::exit;
+///
+/// fn compiles() {
 ///     let args = options().run();
 ///     let mut context = Context::new();
 ///     if let Err(message) = compile_file(&mut context, &args) {

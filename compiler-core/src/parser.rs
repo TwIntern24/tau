@@ -1,3 +1,5 @@
+//! Parses the input to an abstract syntax tree (ast)
+
 use crate::{
     ast::{
         Location, UntypedDecl, UntypedExpr, UntypedStmt,
@@ -16,8 +18,8 @@ use codespan_reporting::diagnostic::Diagnostic;
 use std::{iter::Iterator, sync::Arc};
 use symbol_table::GlobalSymbol;
 
-// Pratt parser inspired after the following block post:
-// https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+/// Pratt parser inspired after the following block post:
+/// <https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html>
 pub struct Parser<I: Iterator<Item = Result<Token>>> {
     /// The token iterator. This is generally the Lexer, but by making it
     /// generic, we allow any type of token iterator.
@@ -31,7 +33,20 @@ pub struct Parser<I: Iterator<Item = Result<Token>>> {
     last: Option<Token>,
 }
 
-impl<I: Iterator<Item = Result<Token>>> Parser<I> {
+impl<I> Parser<I>
+where
+    I: Iterator<Item = Result<Token>>,
+{
+    /// Creates a new parser from the given token iterator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tau_core::parser::Parser;
+    ///
+    /// let tokens = vec![].into_iter();
+    /// let parser = Parser::new(tokens);
+    /// ```
     pub fn new(tokens: I) -> Parser<I> {
         Parser {
             tokens: tokens,
@@ -40,6 +55,25 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
+    /// Parses an ast by consuming all tokens from the iterator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tau_core::{lexer::Lexer, parser::Parser};
+    ///
+    /// let program = r#"
+    /// fn main() {
+    ///     puts("Hello World!");
+    /// }
+    /// "#;
+    /// let file_id = 0;
+    /// let lexer = Lexer::new(program, file_id);
+    /// let result = Parser::new(lexer).parse();
+    /// assert!(result.is_ok());
+    /// let ast = result.unwrap();
+    /// assert_eq!(ast.len(), 1);
+    /// ```
     pub fn parse(mut self) -> Result<Vec<UntypedDecl>> {
         while self.has_next() {
             let declaration = self.decl()?;
@@ -48,7 +82,18 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         Ok(self.declarations)
     }
 
-    pub(crate) fn decl(&mut self) -> Result<UntypedDecl> {
+    /// Parses a single declaration, starting at the current position.
+    /// Valid declarations are:
+    /// - Functions
+    /// - Structs
+    /// - Imports (not fully implemented)
+    /// - Constants (not fully implemented, may be replaced by static)
+    ///
+    /// Each declaration can have modifiers. Valid modifiers are:
+    /// - Extern
+    /// - Io (unimplemented)
+    /// - Public (coming soon)
+    pub fn decl(&mut self) -> Result<UntypedDecl> {
         let token = self.advance()?;
         if token.token_type() == &TokenType::Eof {
             return error(diagnostic("found eof but expected a token", &token));
@@ -295,7 +340,17 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         }
     }
 
-    pub(crate) fn stmt(&mut self) -> Result<UntypedStmt> {
+    /// Parses a single statement, starting at the current position. Tau
+    /// currently supports the following statements:
+    /// - Let bindings
+    /// - While
+    /// - If
+    /// - Blocks
+    /// - Expression statements like function calls
+    /// - Return (not fully implemented)
+    /// - Break (not fully implemented)
+    /// - For (syntax may change)
+    pub fn stmt(&mut self) -> Result<UntypedStmt> {
         let peek = self.peek()?;
         match peek.token_type() {
             TokenType::BraceLeft => self.stmt_block(),
@@ -460,7 +515,30 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
         Ok(while_(condition, body, source))
     }
 
-    pub(crate) fn expr(&mut self) -> Result<UntypedExpr> {
+    /// Parses a new expression starting with 0 binding power. The binding power
+    /// (also called operator precedence) tells the parser how strong an
+    /// operator binds its surrounding expressions. Operators with a high
+    /// binding power are evaluated first. Tau has different types of operators
+    /// like prefix, infix and postfix operators.
+    ///
+    /// The following table shows all operators with there type sorted after
+    /// binding power. If a binding power is followed by a plus, this indicates
+    /// that only expressions with higher binding power can follow. Please note
+    /// that some tokens like plus can be both used as an prefix and infix
+    /// operator.
+    ///
+    /// | Operators | Type | Binding Power |
+    /// | --- | --- |  -- |
+    /// | `!` | Prefix | 1 |
+    /// | `=`, `+=`, `-=`, `*=`, `/=` (Assign) | Infix | 1+ |
+    /// | `&&`, `\|\|`, `\|` (Logic) | Infix | 3+ |
+    /// | `<`, `>`, `<=`, `>=`, `==`, `!=` | Infix | 5+ |
+    /// | `+`, `-` (Sign) | Prefix | 6 |
+    /// | `+`, `-`, `%` | Infix | 7+ |
+    /// | `*`, `/` | Infix | 9+ |
+    /// | `[]`, `()`, `.` | Postfix | 11 |
+    /// | `*`, `&` (Ref & Deref) | Prefix | 14 |
+    pub fn expr(&mut self) -> Result<UntypedExpr> {
         self.expr_bp(0)
     }
 
@@ -803,7 +881,10 @@ impl<I: Iterator<Item = Result<Token>>> Parser<I> {
     }
 }
 
-pub fn with_source<T>(result: Result<T>, source: impl Into<Source>) -> Result<T> {
+/// If the result is an error, adds the given source to the last diagnostic.
+/// This is used to add a source location to eof errors that normally don't have
+/// a meaningful location.
+fn with_source<T>(result: Result<T>, source: impl Into<Source>) -> Result<T> {
     result.map_err(|mut error: Error| {
         error.add_label(label(format!("unclosed token"), source));
         error

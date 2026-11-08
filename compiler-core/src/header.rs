@@ -1,3 +1,7 @@
+//! Tau neither wants header files like C nor that the order of declaration
+//! matters like in Python. To achieve that, the compiler first runs the Header
+//! step that extract all declarations like type definitions or functions.
+
 use crate::{
     ast::{
         Unfold, UntypedDecl,
@@ -17,6 +21,8 @@ use crate::{
 use std::{fs, path::PathBuf, sync::Arc};
 use symbol_table::GlobalSymbol;
 
+/// The header both contains a mutable reference to the context for saving or
+/// looking up other files and the current module that it reads.
 pub struct Header<'ctx> {
     context: &'ctx mut Context,
     module: ModuleInterface,
@@ -66,7 +72,7 @@ impl<'a, 'ctx> DeclVisitor<'a> for Header<'ctx> {
     fn visit_struct(&mut self, structure: &'a StructDecl, _: Source) -> Self::Output {
         let mut struct_ = StructInterface::new(structure.name.clone());
         for (field_name, field_type) in &structure.fields {
-            struct_.declare_associaten(field_name, field_type.clone())?;
+            struct_.declare_associated(field_name, field_type.clone())?;
         }
         self.module.declare_associated(
             &structure.name,

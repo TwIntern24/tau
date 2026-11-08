@@ -11,12 +11,12 @@
 //! components:
 //!
 //! - **Lexer** – Reads the tokens from an input
-//! - **Parser** — Parses the input to an abstract syntax tree (ast)
+//! - **Parser** – Parses the input to an abstract syntax tree (ast)
 //! - **Header** – Tau neither wants header files like C nor that the order of
 //!   declaration matters like in Python. To achieve that, the compiler first
 //!   runs the Header step that extract all declarations like type definitions
 //!   or functions.
-//! - **Semantic Analyzer** — Performs basic semantic analysis and type checking
+//! - **Semantic Analyzer** – Performs basic semantic analysis and type checking
 //!   over the ast. If all checks pass, it is guaranteed that the input code is
 //!   semantically valid.
 //! - **Translator** – Lowers the ast to an immediate representation (ir)
@@ -43,7 +43,7 @@
 //! variables, however they are not fully implemented yet.
 
 use crate::{
-    analyser::SemanticAnalyser,
+    analyzer::SemanticAnalyzer,
     ast::{TypedDecl, identifier::Identifier},
     context::Context,
     error::{FileId, Result},
@@ -54,7 +54,7 @@ use crate::{
 };
 use symbol_table::GlobalSymbol;
 
-pub mod analyser;
+pub mod analyzer;
 pub mod ast;
 pub mod context;
 pub mod error;
@@ -80,9 +80,8 @@ pub fn process_file<'ctx>(
 ) -> Result<(Vec<TypedDecl>, Environment)> {
     let lexer = Lexer::new(&content, file_id);
     let ast = Parser::new(lexer).parse()?;
-    let env = Header::new(context, Identifier::new(name, Source::new(file_id, 0..0))).env(&ast)?;
-    let mut analyzer = SemanticAnalyser::new(env);
-    let ast = analyzer.fold_ast(ast)?;
-    let env = analyzer.env();
+    let mut env =
+        Header::new(context, Identifier::new(name, Source::new(file_id, 0..0))).env(&ast)?;
+    let ast = SemanticAnalyzer::new(&mut env).fold_ast(ast)?;
     Ok((ast, env))
 }

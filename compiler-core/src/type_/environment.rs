@@ -10,7 +10,7 @@ use symbol_table::GlobalSymbol;
 pub type TypeDefinition = Origin<Typed>;
 pub type Scope = HashMap<GlobalSymbol, TypeDefinition>;
 
-trait Namespace {
+pub trait Namespace {
     fn find_symbol(&self, name: &Identifier) -> Result<&TypeDefinition>;
 
     fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace>;
@@ -57,7 +57,7 @@ impl StructInterface {
             .ok_or_else(|| Error::new(diagnostic("field not found", name)))
     }
 
-    pub fn declare_associaten(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
+    pub fn declare_associated(&mut self, name: &Identifier, type_: Typed) -> Result<()> {
         self.associated
             .insert(name.symbol(), TypeDefinition::new(type_, name.source()))
             .map_or_else(
@@ -71,7 +71,7 @@ impl StructInterface {
             )
     }
 
-    pub fn find_associaten(&self, name: &Identifier) -> Result<&TypeDefinition> {
+    pub fn find_associated(&self, name: &Identifier) -> Result<&TypeDefinition> {
         self.associated
             .get(&name.symbol())
             .ok_or_else(|| Error::new(diagnostic("field not found", name)))
@@ -84,7 +84,7 @@ impl StructInterface {
 
 impl Namespace for StructInterface {
     fn find_symbol(&self, name: &Identifier) -> Result<&TypeDefinition> {
-        self.find_associaten(name)
+        self.find_associated(name)
     }
 
     fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace> {
@@ -170,7 +170,7 @@ impl ModuleInterface {
             )
     }
 
-    pub fn find_associaten(&self, name: &Identifier) -> Result<&TypeDefinition> {
+    pub fn find_associated(&self, name: &Identifier) -> Result<&TypeDefinition> {
         self.associated
             .get(&name.symbol())
             .ok_or_else(|| Error::new(diagnostic("field not found", name)))
@@ -183,7 +183,7 @@ impl ModuleInterface {
 
 impl Namespace for ModuleInterface {
     fn find_symbol(&self, name: &Identifier) -> Result<&TypeDefinition> {
-        self.find_associaten(name)
+        self.find_associated(name)
     }
 
     fn find_subspace(&self, name: &Identifier) -> Result<&dyn Namespace> {

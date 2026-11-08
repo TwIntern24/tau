@@ -1,5 +1,5 @@
 use crate::{
-    analyser::SemanticAnalyser,
+    analyzer::SemanticAnalyzer,
     ast::{
         TypedStmt,
         expression::Expr,
@@ -13,7 +13,7 @@ use crate::{
     type_::{Typed, Untyped, prelude::*, unify},
 };
 
-impl StmtFolder for SemanticAnalyser {
+impl<'a> StmtFolder for SemanticAnalyzer<'a> {
     type Type = Untyped;
     type Output = Result<TypedStmt>;
 

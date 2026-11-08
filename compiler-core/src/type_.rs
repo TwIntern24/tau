@@ -1,3 +1,18 @@
+//! Type system for Tau. Tau is statically and strongly typed with (currently
+//! minimum) type inference.
+//!
+//! The compiler currently detects the following types:
+//! - Named types like structs or bool
+//! - Function types
+//! - Array types
+//! - Pointer types
+//!
+//! The following types are planned but not yet implemented:
+//! - Tuple types with an empty tuple replacing the void type
+//! - Never type for indicating that an expression or statement never returns
+//! - Error types (internal only) for marking nodes in the ast that have an
+//!   error. This allows for better error reporting.
+
 use crate::error::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
 use std::{cell::RefCell, fmt, ops::Deref, sync::Arc};

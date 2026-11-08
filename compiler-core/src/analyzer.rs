@@ -1,34 +1,36 @@
+//! Performs basic semantic analysis and type checking
+
 use crate::{
     ast::{
-        TypedDecl, TypedExpr, UntypedDecl, UntypedExpr, declaration::DeclFolder,
+        TypedAst, TypedExpr, UntypedAst, UntypedExpr, declaration::DeclFolder,
         expression::ExprFolder, fold_vec,
     },
     error::{Error, Result, label, primary},
     type_::{Typed, environment::Environment, unify},
 };
 
-pub struct SemanticAnalyser {
-    pub(crate) environment: Environment,
+pub struct SemanticAnalyzer<'a> {
+    pub(crate) environment: &'a mut Environment,
 }
 
-impl SemanticAnalyser {
-    pub fn new(environment: Environment) -> Self {
+impl<'a> SemanticAnalyzer<'a> {
+    /// Creates a new analyzer from the given environment. This environment is
+    /// normally created by the header.
+    pub fn new(environment: &'a mut Environment) -> Self {
         Self { environment }
     }
 
-    pub fn env(self) -> Environment {
-        self.environment
+    /// Fold an untyped ast to a typed ast.
+    pub fn fold_ast(&mut self, ast: UntypedAst) -> Result<TypedAst> {
+        fold_vec(ast, |decl| self.fold_decl(decl))
     }
 
-    pub fn new_unbound_var(&mut self) -> Typed {
-        self.environment.new_unbound_var()
-    }
-
+    /// Infers the type to the given expression.
     pub fn infer(&mut self, expr: UntypedExpr) -> Result<TypedExpr> {
         self.fold_expr(expr)
     }
 
-    /// Infers the type of the given function and tries to unify it with the
+    /// Infers the type of the given expression and tries to unify it with the
     /// given type, recording any unification error that might take place.
     pub fn infer_and_unify(&mut self, expression: UntypedExpr, type_: Typed) -> Result<TypedExpr> {
         let expression = self.infer(expression)?;
@@ -41,7 +43,7 @@ impl SemanticAnalyser {
         Ok(expression)
     }
 
-    pub fn fold_ast(&mut self, ast: Vec<UntypedDecl>) -> Result<Vec<TypedDecl>> {
-        fold_vec(ast, |decl| self.fold_decl(decl))
+    pub(crate) fn new_unbound_var(&mut self) -> Typed {
+        self.environment.new_unbound_var()
     }
 }

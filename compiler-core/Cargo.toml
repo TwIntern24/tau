@@ -5,11 +5,11 @@ edition = "2024"
 authors = ["Lovis Rentsch", "Karl Zschiebsch"]
 
 description = "Core compiler for the Tau programming language."
-readme = "../README.md"
+readme = "README.md"
 license-file = "../LICENSE"
 homepage = "https://codeberg.org/tau-lang"
-repository = "https://github.com/tau-lang/tau"
-keywords = ["tau", "compiler"]
+repository = "https://codeberg.org/tau-lang/tau"
+keywords = ["tau-lang", "compiler"]
 
 [lib]
 name = "tau_core"

@@ -5,13 +5,13 @@ authors = ["Karl Zschiebsch"]
 edition = "2024"
 
 description = "A QBE intermediate language generator for the Tau compiler."
-readme = "../README.md"
+readme = "README.md"
 license-file = "../LICENSE"
 homepage = "https://codeberg.org/tau-lang"
-repository = "https://github.com/tau-lang/tau"
+repository = "https://codeberg.org/tau-lang/tau"
+keywords = ["tau-lang", "qbe"]
 
 [dependencies]
-# The pure compiler
 tau-lang-core = { workspace = true }
 symbol_table = { workspace = true }
 qbe = "4.0.0"

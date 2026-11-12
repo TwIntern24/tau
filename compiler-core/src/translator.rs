@@ -1,11 +1,12 @@
-#![allow(warnings)]
+//! Lowers the ast to an immediate representation (ir)
+
 use crate::{
     ast::{
-        TypedDecl,
+        TypedAst,
         declaration::{DeclFolder, FuncDecl, StructDecl},
         expression::{Expr, ExprFolder},
         identifier::Identifier,
-        lookup::{AdlLookup, CallLookup, Lookup, VarLookup},
+        lookup::{CallLookup, VarLookup},
         origin::{BinaryOp, Literal, Origin, UnaryOp},
         statement::{Stmt, StmtFolder},
     },
@@ -18,15 +19,15 @@ use crate::{
         value::{Value, ValueKind},
     },
     lexer::Source,
-    type_::{self, Type, TypeVar, prelude::*},
-    uid::UniqueIdGenerator,
+    type_::{Type, prelude::*},
 };
-use std::{collections::HashMap, mem, ops::Deref, sync::Arc};
+use std::collections::HashMap;
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub type Scope = HashMap<GlobalSymbol, Value>;
 
-/// Translates an AST to IR.
+/// Lowers an AST to IR. The translator directly calls the backend code
+/// generator over the emitter trait.
 pub struct Translator<'a, E: Emitter> {
     emitter: &'a mut E,
 
@@ -44,6 +45,7 @@ pub struct Translator<'a, E: Emitter> {
 }
 
 impl<'a, E: Emitter> Translator<'a, E> {
+    /// Creates a new translator from the given emitter.
     pub fn new(emitter: &'a mut E) -> Self {
         Self {
             emitter,
@@ -55,7 +57,9 @@ impl<'a, E: Emitter> Translator<'a, E> {
         }
     }
 
-    pub fn fold_ast(mut self, ast: Vec<TypedDecl>) {
+    /// Fold the ast and lower it to ir. This will both consume the ast and the
+    /// translator.
+    pub fn fold_ast(mut self, ast: TypedAst) {
         for decl in ast {
             self.fold_decl(decl);
         }
@@ -252,8 +256,8 @@ impl<'a, E: Emitter> StmtFolder for Translator<'a, E> {
     type Output = ();
 
     fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, _: Source) -> Self::Output {
-        /// This is the name of the next block. We use this as a jmp destination
-        /// if we need to leave the block earlier.
+        // This is the name of the next block. We use this as a jmp destination
+        // if we need to leave the block earlier.
         let end_label = self.new_block_name();
 
         self.fold_scoped_statements(statements);
@@ -336,7 +340,7 @@ impl<'a, E: Emitter> StmtFolder for Translator<'a, E> {
         &mut self,
         condition: Expr<Self::Type>,
         body: Vec<Stmt<Self::Type>>,
-        source: Source,
+        _: Source,
     ) -> Self::Output {
         // Define jump labels
         let check_block = self.new_block_name();
@@ -364,7 +368,7 @@ impl<'a, E: Emitter> StmtFolder for Translator<'a, E> {
         self.emitter.begin_block(end_block);
     }
 
-    fn fold_expr_stmt(&mut self, expr: Expr<Self::Type>, source: Source) -> Self::Output {
+    fn fold_expr_stmt(&mut self, expr: Expr<Self::Type>, _: Source) -> Self::Output {
         // Drop return value is fine.
         self.fold_expr(expr);
     }
@@ -501,7 +505,7 @@ impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
         &mut self,
         object: Expr<Self::Type>,
         index: Expr<Self::Type>,
-        source: Source,
+        _: Source,
         type_: Self::Type,
     ) -> Self::Output {
         let address_type = object.type_().clone();
@@ -521,7 +525,7 @@ impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
         &mut self,
         lookup: CallLookup<Self::Type>,
         arguments: Vec<Expr<Self::Type>>,
-        source: Source,
+        _: Source,
         type_: Self::Type,
     ) -> Self::Output {
         let arguments = arguments
@@ -540,7 +544,7 @@ impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
     fn fold_create_array(
         &mut self,
         fields: Vec<Expr<Self::Type>>,
-        source: Source,
+        _: Source,
         type_: Typed,
     ) -> Self::Output {
         let alloc = self.emitter.emit_instr_alloca(type_.clone(), None);
@@ -556,7 +560,7 @@ impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
             let init = self.fold_expr(init);
             let store = self.emitter.emit_instr_store(&location, &init);
             self.emitter.emit_stmt_volatile(store);
-            offset += size;
+            offset += align.max(size);
         }
         alloc
     }
@@ -585,7 +589,7 @@ impl<'a, E: Emitter> ExprFolder for Translator<'a, E> {
             let init = self.auto_load(init);
             let store = self.emitter.emit_instr_store(&location, &init);
             self.emitter.emit_stmt_volatile(store);
-            offset += size;
+            offset += align.max(size);
         }
         alloc
     }

@@ -1,5 +1,5 @@
 use crate::{
-    analyser::SemanticAnalyser,
+    analyzer::SemanticAnalyzer,
     ast::{
         Identifier, Location, TypedExpr, Unfold,
         expression::{Expr, ExprFolder, ExprKind},
@@ -13,7 +13,7 @@ use crate::{
     type_::{Type, Typed, Untyped, collapse_links, prelude::*, unify},
 };
 
-impl ExprFolder for SemanticAnalyser {
+impl<'a> ExprFolder for SemanticAnalyzer<'a> {
     type Type = Untyped;
     type Output = Result<TypedExpr>;
 
@@ -239,7 +239,7 @@ impl ExprFolder for SemanticAnalyser {
                 );
             }
         };
-        let type_ = struct_.find_associaten(&right)?.kind().clone();
+        let type_ = struct_.find_associated(&right)?.kind().clone();
         Ok(access_struct(left, right, type_))
     }
 
@@ -330,12 +330,10 @@ impl ExprFolder for SemanticAnalyser {
             };
             if *size < fields.len() {
                 return error(
-                    diagnostic(format!("number of elements exceeds size"), source).with_label(
-                        label(
-                            format!("expected at most {} elements, got {}", size, fields.len()),
-                            source,
-                        ),
-                    ),
+                    diagnostic("number of elements exceeds size", source).with_label(label(
+                        format!("expected at most {} elements, got {}", size, fields.len()),
+                        source,
+                    )),
                 );
             }
             Ok(TypedExpr::new(ExprKind::CreateArray {

@@ -1,21 +1,23 @@
+//! Generates C headers from a Tau ast.
+
 use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        declaration::{Decl, DeclVisitor, FuncDecl, StructDecl},
+        TypedAst,
+        declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::Expr,
         identifier::Identifier,
     },
     error::DynResult,
-    generator::Generator,
     lexer::Source,
     type_::Typed,
 };
 
 pub struct CHeaderGenerator;
 
-impl<'a> Generator<'a> for CHeaderGenerator {
-    fn generate(&mut self, ast: &'a [Decl<Typed>], output: &std::path::Path) -> DynResult<()> {
+impl CHeaderGenerator {
+    pub fn transpile(&mut self, ast: &TypedAst, output: &std::path::Path) -> DynResult<()> {
         let mut file = File::create(output)?;
         let mut path_buf = output.to_path_buf();
         path_buf.set_extension("");

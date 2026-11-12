@@ -1,5 +1,5 @@
 use crate::{
-    analyser::SemanticAnalyser,
+    analyzer::SemanticAnalyzer,
     ast::{
         Identifier, TypedDecl,
         declaration::{DeclFolder, FuncDecl, StructDecl},
@@ -14,7 +14,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
-impl DeclFolder for SemanticAnalyser {
+impl<'a> DeclFolder for SemanticAnalyzer<'a> {
     type Type = Untyped;
     type Output = Result<TypedDecl>;
 

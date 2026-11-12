@@ -5,10 +5,11 @@ authors = ["Karl Zschiebsch"]
 edition = "2024"
 
 description = "A c generator for the Tau compiler."
-readme = "../README.md"
+readme = "README.md"
 license-file = "../LICENSE"
 homepage = "https://codeberg.org/tau-lang"
-repository = "https://github.com/tau-lang/tau"
+repository = "https://codeberg.org/tau-lang/tau"
+keywords = ["tau-lang", "transpiler"]
 
 [dependencies]
 tau-lang-core = { path = "../compiler-core", version = "0.1.0" }

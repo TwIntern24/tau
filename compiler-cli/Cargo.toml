@@ -5,24 +5,26 @@ authors = ["Karl Zschiebsch"]
 edition = "2024"
 
 description = "Command line interface for the Tau compiler."
-readme = "../README.md"
+readme = "README.md"
 license-file = "../LICENSE"
 homepage = "https://codeberg.org/tau-lang"
-repository = "https://github.com/tau-lang/tau"
-keywords = ["tau", "cli"]
+repository = "https://codeberg.org/tau-lang/tau"
+keywords = ["tau-lang", "cli"]
 
 [lib]
 name = "tau_cli"
 
 [features]
-default = ["c"]
+default = ["c", "qbe"]
 c = ["dep:tau-generator-c"]
+qbe = ["dep:tau-generator-qbe"]
+bright-color = ["bpaf/bright-color"]
+dull-color = ["bpaf/dull-color"]
 
 [dependencies]
-# The pure compiler
-tau-lang-core = { path = "../compiler-core", version = "0.1.0" }
-tau-generator-c = { path = "../generator-c", version = "0.1.0", optional = true }
-tau-generator-qbe = { path = "../generator-qbe", version = "0.1.0" }
+tau-lang-core = { workspace = true }
+tau-generator-c = { workspace = true, optional = true }
+tau-generator-qbe = { workspace = true, optional = true }
 codespan-reporting = { workspace = true }
 symbol_table = { workspace = true }
 bpaf = { version = "0.9.28", features = ["autocomplete", "derive"] }

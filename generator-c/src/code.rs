@@ -1,8 +1,10 @@
+//! Generates C code from a Tau ast.
+
 use crate::{source_code::CSourceCode, visit_vec};
 use std::{fs::File, io::prelude::*};
 use tau_core::{
     ast::{
-        TypedDecl, TypedStmt,
+        TypedAst, TypedStmt,
         declaration::{DeclVisitor, FuncDecl, StructDecl},
         expression::{Expr, TypedExprVisitor},
         identifier::Identifier,
@@ -11,18 +13,40 @@ use tau_core::{
         statement::{Stmt, StmtVisitor},
     },
     error::DynResult,
-    generator::Generator,
     lexer::Source,
     type_::Typed,
 };
 
+#[derive(Default)]
 pub struct CCodeGenerator {
     indent: usize,
 }
 
 impl<'a> CCodeGenerator {
-    pub fn new() -> CCodeGenerator {
-        CCodeGenerator { indent: 0 }
+    pub fn new() -> Self {
+        Self { indent: 0 }
+    }
+
+    pub fn transpile(&mut self, ast: &'a TypedAst, output: &std::path::Path) -> DynResult<()> {
+        let mut file = File::create(output)?;
+        let mut path_buf = output.to_path_buf();
+        path_buf.set_extension("h");
+        let header_file = path_buf
+            .file_name()
+            .expect("expect path has filename")
+            .to_str()
+            .unwrap();
+
+        let declarations = visit_vec(
+            &ast.iter()
+                .filter_map(|decl| self.visit_decl(decl))
+                .collect::<Vec<CSourceCode>>(),
+            |decl| format!("{}", decl),
+            "\n\n",
+        );
+
+        write!(file, "#include \"{header_file}\"\n\n{declarations}\n")?;
+        Ok(())
     }
 
     fn visit_idented(&mut self, stmt: &TypedStmt) -> CSourceCode {
@@ -36,32 +60,6 @@ impl<'a> CCodeGenerator {
 
     fn end_scope(&mut self) {
         self.indent -= 1;
-    }
-}
-
-impl<'a> Generator<'a> for CCodeGenerator {
-    fn generate(&mut self, ast: &'a [TypedDecl], output: &std::path::Path) -> DynResult<()> {
-        let mut file = File::create(output)?;
-        let mut path_buf = output.to_path_buf();
-        path_buf.set_extension("h");
-        let header_file = path_buf
-            .file_name()
-            .expect("expect path has filename")
-            .to_str()
-            .unwrap();
-
-        let declarations = visit_vec(
-            &ast.into_iter()
-                .map(|decl| self.visit_decl(decl))
-                .filter(|op| op.is_some())
-                .map(|op| op.expect("Should only contain some."))
-                .collect::<Vec<CSourceCode>>(),
-            |decl| format!("{}", decl),
-            "\n\n",
-        );
-
-        write!(file, "#include \"{header_file}\"\n\n{declarations}\n")?;
-        Ok(())
     }
 }
 
@@ -167,7 +165,7 @@ impl<'a> TypedExprVisitor<'a> for CCodeGenerator {
     ) -> CSourceCode {
         let fields = visit_vec(fields, |x| format!("{}", self.visit_expr(x)), ", ");
         let type_ = CSourceCode::from(type_);
-        format!("{type_}{{{fields}}}").into()
+        format!("({type_}) {{{fields}}}").into()
     }
 
     fn visit_create_struct(
@@ -263,17 +261,14 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_if(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        if_branch: &'a Vec<Stmt<Self::Type>>,
+        if_branch: &'a [Stmt<Self::Type>],
         else_branch: &'a Option<Vec<Stmt<Self::Type>>>,
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         let if_branch = visit_vec(if_branch, |stmt| self.visit_idented(stmt).to_string(), "");
         if let Some(else_branch) = else_branch {
-            let else_branch = visit_vec(
-                &else_branch,
-                |stmt| self.visit_idented(stmt).to_string(),
-                "",
-            );
+            let else_branch =
+                visit_vec(else_branch, |stmt| self.visit_idented(stmt).to_string(), "");
             format!("if ({condition}) {{ {if_branch} }} else {{ {else_branch} }}").into()
         } else {
             format!("if ({condition}) {{ {if_branch} }}").into()
@@ -283,7 +278,7 @@ impl<'a> StmtVisitor<'a> for CCodeGenerator {
     fn visit_while(
         &mut self,
         condition: &'a Expr<Self::Type>,
-        body: &'a Vec<Stmt<Self::Type>>,
+        body: &'a [Stmt<Self::Type>],
     ) -> Self::Output {
         let condition = self.visit_expr(condition);
         self.begin_scope();

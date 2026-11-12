@@ -1,5 +1,6 @@
+//! Reads the tokens from an input
+
 use crate::error::{Error, FileId, Result, diagnostic, error};
-use codespan_reporting::diagnostic::Diagnostic;
 use std::str::CharIndices;
 
 pub mod source;
@@ -8,6 +9,10 @@ pub mod token;
 pub use source::Source;
 pub use token::{Token, TokenType};
 
+/// The lexer reads a source string slice and converts it to tokens. This struct
+/// is also an iterator, that reads the next token whenever next is called. The
+/// token scanner always assumes that the internal byte offset points to the
+/// start of the next token.
 #[derive(Clone)]
 pub struct Lexer<'a> {
     source: &'a str,
@@ -18,9 +23,12 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    /// Creates a new lexer with a given source and file id.
+    /// The file id is used to track from which file the source originates. If
+    /// later an error occurs, this is the id that is used for codespan.
     pub fn new(source: &'a str, file_id: FileId) -> Lexer<'a> {
         let mut lexer = Lexer {
-            source: source,
+            source,
             chars: source.char_indices(),
             file_id,
             start: 0,
@@ -32,8 +40,13 @@ impl<'a> Lexer<'a> {
         lexer
     }
 
+    /// Scans the input for the next token. Throws an error if it could not
+    /// parse a token. This may happen because a string literal was not
+    /// terminated or a float literal contained two dots.
     fn scan_token(&mut self) -> Result<Token> {
-        let c = self.advance()?;
+        let c = self
+            .advance()
+            .ok_or_else(|| Error::new(diagnostic("expected token, found eof", self.source())))?;
         let token_type = match c {
             '(' => TokenType::ParenLeft,
             ')' => TokenType::ParenRight,
@@ -76,8 +89,8 @@ impl<'a> Lexer<'a> {
             }
             '/' => {
                 if self.matchc('/') {
-                    while !self.is_at_end() && self.peek()? != '\n' {
-                        self.advance()?;
+                    while self.is_non_empty() && self.peek().unwrap() != '\n' {
+                        self.advance();
                     }
                     return self.scan_token();
                 } else if self.matchc('=') {
@@ -132,9 +145,9 @@ impl<'a> Lexer<'a> {
             '"' => self.string()?,
             _ => {
                 if Lexer::is_digit(c) {
-                    self.number()?
+                    self.number()
                 } else if Lexer::is_alpha(c) {
-                    self.identifier()?
+                    self.identifier()
                 } else {
                     return error(diagnostic(
                         format!("unexpected character '{}'", c),
@@ -149,14 +162,14 @@ impl<'a> Lexer<'a> {
         Ok(Token::new(token_type, self.source()))
     }
 
-    fn identifier(&mut self) -> Result<TokenType> {
+    fn identifier(&mut self) -> TokenType {
         self.start = self.chars.offset() - 1;
-        while !self.is_at_end() && Lexer::is_alpha_numeric(self.peek()?) {
-            self.advance()?;
+        while self.is_non_empty() && Lexer::is_alpha_numeric(self.peek().unwrap()) {
+            self.advance();
         }
 
         let text = self.view();
-        Ok(match text {
+        match text {
             "import" => TokenType::Import,
             "struct" => TokenType::Struct,
             "io" => TokenType::Io,
@@ -175,74 +188,73 @@ impl<'a> Lexer<'a> {
             "true" => TokenType::Bool(true),
             "false" => TokenType::Bool(false),
             _ => TokenType::Identifier(text.into()),
-        })
+        }
     }
 
-    fn number(&mut self) -> Result<TokenType> {
+    fn number(&mut self) -> TokenType {
         self.start = self.chars.offset() - 1;
-        while !self.is_at_end() {
-            let next = self.peek()?;
+        while self.is_non_empty() {
+            let next = self.peek().unwrap();
             if Lexer::is_digit(next) {
-                self.advance()?;
+                self.advance();
             } else if next == '.' {
-                self.advance()?;
+                self.advance();
                 return self.float();
             } else {
                 break;
             }
         }
 
-        Ok(TokenType::Int(self.view().parse().unwrap()))
+        TokenType::Int(self.view().parse().unwrap())
     }
 
-    fn float(&mut self) -> Result<TokenType> {
-        while !self.is_at_end() {
-            let next = self.peek()?;
+    fn float(&mut self) -> TokenType {
+        while self.is_non_empty() {
+            let next = self.peek().unwrap();
             if Lexer::is_digit(next) {
-                self.advance()?;
-            } else if next == '.' {
-                return error(diagnostic("found a second dot in the float", self.source()));
+                self.advance();
             } else {
                 break;
             }
         }
 
-        Ok(TokenType::Float(self.view().parse().unwrap()))
+        TokenType::Float(self.view().parse().unwrap())
     }
 
     /// Parses a single string.
-    fn string(&mut self) -> crate::error::Result<TokenType> {
+    fn string(&mut self) -> Result<TokenType> {
         self.start = self.chars.offset();
-        while !self.is_at_end() && self.peek()? != '"' {
-            self.advance()?;
+        while self.is_non_empty() && self.peek().unwrap() != '"' {
+            self.advance();
         }
 
         let view = self.view().to_string();
         // The enclosing ".
-        self.advance()?;
+        self.advance()
+            .ok_or_else(|| Error::new(diagnostic("unclosed string literal", self.source())))?;
 
         Ok(TokenType::String(view))
     }
 
     fn matchc(&mut self, c: char) -> bool {
         match self.peek() {
-            Ok(p) => p == c && self.advance().is_ok(),
+            Some(p) => p == c && self.advance().is_some(),
             _ => false,
         }
     }
 
-    fn peek(&mut self) -> Result<char> {
+    fn peek(&mut self) -> Option<char> {
         if let Some((_, c)) = self.last {
-            return Ok(c);
+            return Some(c);
         }
         let o = self.chars.offset();
         let c = self.advance()?;
         self.last = Some((o, c));
-        Ok(c)
+        Some(c)
     }
 
     fn skip_space(&mut self) {
-        while let Ok(c) = self.peek()
+        while let Some(c) = self.peek()
             && matches!(c, ' ' | '\r' | '\t' | '\n')
         {
             self.advance().expect("expected token exists");
@@ -261,18 +273,15 @@ impl<'a> Lexer<'a> {
         Lexer::is_alpha(c) || Lexer::is_digit(c)
     }
 
-    fn is_at_end(&self) -> bool {
-        self.source.len() <= self.chars.offset()
+    fn is_non_empty(&mut self) -> bool {
+        self.peek().is_some()
     }
 
-    fn advance(&mut self) -> Result<char> {
+    fn advance(&mut self) -> Option<char> {
         if let Some((_, c)) = self.last.take() {
-            return Ok(c);
+            return Some(c);
         }
-        self.chars
-            .next()
-            .map(|v| v.1)
-            .ok_or_else(|| Error::new(Diagnostic::error().with_message("unexpected eof")))
+        self.chars.next().map(|v| v.1)
     }
 
     fn end(&self) -> usize {
@@ -296,10 +305,10 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.is_at_end() {
-            None
-        } else {
+        if self.is_non_empty() {
             Some(self.scan_token())
+        } else {
+            None
         }
     }
 }

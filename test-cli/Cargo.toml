@@ -7,4 +7,5 @@ license-file = "../LICENSE"
 [dev-dependencies]
 tau-lang-cli = { workspace = true }
 tau-lang-core = { workspace = true }
+pretty_assertions = { workspace = true }
 bpaf = { version = "0.9.28", features = ["docgen"] }

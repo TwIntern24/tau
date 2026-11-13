@@ -299,7 +299,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn source(&self) -> Source {
-        Source::new(self.file_id, self.start..self.end() - 1)
+        Source::new(self.file_id, self.start..self.end())
     }
 }
 

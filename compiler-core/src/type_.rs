@@ -325,61 +325,51 @@ unsafe impl Sync for Type {}
 /// same.
 ///
 /// It two types are found to not be the same an error is returned.
-pub fn unify(t1: Typed, t2: Typed) -> Result<(), Diagnostic<FileId>> {
-    if t1 == t2 {
-        return Ok(());
-    }
-
-    if let Type::Var { type_: lock } = t1.deref() {
-        match lock.try_read() {
-            Ok(type_var) => return match type_var.deref() {
-                TypeVar::Link { type_: t } => {
-                    unify(t.clone(), t2)?;
-
-                    // Note that type_ is always a Link in this branch.
-                    // unify may replace t's inner value with another link
-                    // (See the Action::Link branch just above)
-                    // This can cause the compiler to build up an ever-growing chain
-                    // of links. Therefore, we try to collapse the
-                    // links. However, the RwLock in type_
-                    // may already be borrowed by collapsing the links in t2 at the
-                    // start of the function, in which case accept
-                    // the extra link.
-                    if let Ok(mut type_) = lock.write() {
-                        *type_ = TypeVar::Link {
-                            type_: collapse_links(t.clone()),
-                        }
-                    }
-                    Ok(())
+pub fn unify(unified: Typed, expected: Typed) -> Result<(), Diagnostic<FileId>> {
+    if let Type::Var { type_: lock } = unified.deref() {
+        let type_var = {
+            match lock.try_read() {
+                Ok(type_var) => type_var.clone(),
+                Err(_) => unreachable!(),
+            }
+        };
+    
+        return match type_var {
+            TypeVar::Link { type_: t } => {
+                unify(t, expected)
+            }
+    
+            TypeVar::Unbound { id } => {
+                unify_unbound_type(&expected, id)?;
+    
+                *lock.write().unwrap() = TypeVar::Link {
+                    type_: expected.clone(),
+                };
+    
+                Ok(())
+            }
+    
+            TypeVar::Generic { id } => {
+                if let Type::Var { type_: lock } = expected.deref()
+                    && lock.read().unwrap().is_unbound()
+                {
+                    *lock.write().unwrap() = TypeVar::Generic { id };
+                    return Ok(());
                 }
-
-                TypeVar::Unbound { id } => {
-                    unify_unbound_type(&t2, *id)?;
-                    {
-                        *lock.write().unwrap() = TypeVar::Link { type_: t2.clone() };
-                        Ok(())
-                    }
-                }
-
-                TypeVar::Generic { id } => {
-                    if let Type::Var { type_: lock } = t2.deref()
-                        && lock.read().unwrap().is_unbound()
-                    {
-                        *lock.write().unwrap() = TypeVar::Generic { id: *id };
-                        return Ok(());
-                    }
-                    Err(Diagnostic::error().with_message("could not unify"))
-                }
-            },
-            Err(_) => unreachable!()
+    
+                Err(Diagnostic::error().with_message("could not unify"))
+            }
         };
     }
 
-    if let Type::Var { .. } = t2.deref() {
-        return unify(t2, t1);
+    if let Type::Var { type_: lock } = expected.deref() {
+        *lock.write().unwrap() = TypeVar::Link {
+            type_: unified.clone(),
+        };
+        return Ok(());
     }
 
-    match (t1.deref(), t2.deref()) {
+    match (unified.deref(), expected.deref()) {
         (
             Type::Named {
                 name: n1,
@@ -412,15 +402,15 @@ pub fn unify(t1: Typed, t2: Typed) -> Result<(), Diagnostic<FileId>> {
                     .with_message("functions don't have the same number of arguments"));
             }
 
-            for (t1, t2) in arguments1.iter().zip(arguments2) {
-                unify(t1.clone(), t2.clone())?;
+            for (unified, expected) in arguments1.iter().zip(arguments2) {
+                unify(unified.clone(), expected.clone())?;
             }
 
             unify(return1.clone(), return2.clone())
         }
-        (Type::Ptr { type_: t1, .. }, Type::Ptr { type_: t2, .. }) => unify(t1.clone(), t2.clone()),
+        (Type::Ptr { type_: unified, .. }, Type::Ptr { type_: expected, .. }) => unify(unified.clone(), expected.clone()),
 
-        _ => Err(Diagnostic::error().with_message(format!("expected {}, got {}", t1, t2))),
+        _ => Err(Diagnostic::error().with_message(format!("expected {}, got {}", unified, expected))),
     }
 }
 

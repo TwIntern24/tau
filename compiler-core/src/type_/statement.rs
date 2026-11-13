@@ -2,7 +2,7 @@ use crate::{
     analyzer::SemanticAnalyzer,
     ast::{
         TypedStmt,
-        expression::Expr,
+        expression::{TypedExprVisitor, Expr},
         fold_vec,
         identifier::Identifier,
         prelude::*,
@@ -45,6 +45,7 @@ impl<'a> StmtFolder for SemanticAnalyzer<'a> {
         } else {
             initializer.type_().clone()
         };
+        self.visit_expr(&initializer)?;
         self.environment.declare_var(&name, type_.clone())?;
         Ok(let_(name, Some(type_), initializer, source))
     }
@@ -70,6 +71,7 @@ impl<'a> StmtFolder for SemanticAnalyzer<'a> {
         source: Source,
     ) -> Self::Output {
         let condition = self.infer_and_unify(condition, bool())?;
+        self.visit_expr(&condition)?;
         let if_branch = fold_vec(if_branch, |stmt| self.fold_stmt(stmt))?;
         let else_branch = if let Some(else_branch) = else_branch {
             Some(fold_vec(else_branch, |stmt| self.fold_stmt(stmt))?)
@@ -86,12 +88,14 @@ impl<'a> StmtFolder for SemanticAnalyzer<'a> {
         source: Source,
     ) -> Self::Output {
         let condition = self.infer_and_unify(condition, bool())?;
+        self.visit_expr(&condition)?;
         let body = fold_vec(body, |stmt| self.fold_stmt(stmt))?;
         Ok(while_(condition, body, source))
     }
 
     fn fold_expr_stmt(&mut self, expr: Expr<Self::Type>, source: Source) -> Self::Output {
         let expr = self.infer(expr)?;
+        self.visit_expr(&expr)?;
         Ok(expr_stmt(expr, source))
     }
 }

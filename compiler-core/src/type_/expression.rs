@@ -2,7 +2,7 @@ use crate::{
     analyzer::SemanticAnalyzer,
     ast::{
         Identifier, Location, TypedExpr, Unfold,
-        expression::{Expr, ExprFolder, ExprKind},
+        expression::{Expr, ExprFolder, TypedExprVisitor, ExprKind},
         fold_vec,
         lookup::{AdlLookup, CallLookup, VarLookup},
         origin::{BinaryOp, Literal, Origin, UnaryOp},
@@ -26,15 +26,6 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
         let right = self.fold_expr(right)?;
         match operator.kind() {
             UnaryOp::Neg => {
-                if !right.type_().is_number() {
-                    return error(
-                        diagnostic(
-                            format!("expected number, got {}", right.type_()),
-                            operator.merge(&right),
-                        )
-                        .with_label(label(format!("right has type {}", right.type_()), &right)),
-                    );
-                }
                 let type_ = right.type_().clone();
                 Ok(unary(operator, right, type_))
             }
@@ -104,19 +95,6 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
             | BinaryOp::SetDiv => {
                 let left = self.infer(left)?;
                 let right = self.infer(right)?;
-                if !left.type_().is_number() || !right.type_().is_number() {
-                    return error(
-                        diagnostic("left and right side must be numbers", left.merge(&right))
-                            .with_label(label(
-                                format!("left side has type {}", left.type_()),
-                                &left,
-                            ))
-                            .with_label(label(
-                                format!("right side has type {}", right.type_()),
-                                &right,
-                            )),
-                    );
-                }
                 unify(left.type_().clone(), right.type_().clone()).map_err(|d| {
                     Error::new(
                         d.with_label(primary(left.merge(&right)))
@@ -158,19 +136,6 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
             BinaryOp::Low | BinaryOp::Leq | BinaryOp::Gre | BinaryOp::Geq => {
                 let left = self.infer(left)?;
                 let right = self.infer(right)?;
-                if !left.type_().is_number() || !right.type_().is_number() {
-                    return error(
-                        diagnostic("left and right side must be numbers", left.merge(&right))
-                            .with_label(label(
-                                format!("left side has type {}", left.type_()),
-                                &left,
-                            ))
-                            .with_label(label(
-                                format!("right side has type {}", right.type_()),
-                                &right,
-                            )),
-                    );
-                }
                 unify(left.type_().clone(), right.type_().clone()).map_err(|d| {
                     Error::new(
                         d.with_label(primary(left.merge(&right)))
@@ -395,8 +360,8 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
 
     fn fold_literal(&mut self, value: Origin<Literal>, _: Self::Type) -> Self::Output {
         let type_ = match value.kind() {
-            Literal::Int(_) => self.environment.new_unbound_var(),
-            Literal::Float(_) => self.environment.new_unbound_var(),
+            Literal::Int(_) => self.new_unbound_var(),
+            Literal::Float(_) => self.new_unbound_var(),
             Literal::Bool(_) => bool(),
             Literal::String(_) => str(),
         };
@@ -406,5 +371,186 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
     fn fold_variable(&mut self, lookup: VarLookup, _: Self::Type) -> Self::Output {
         let type_def = self.environment.find_var(lookup.kind(), lookup.name())?;
         Ok(variable(lookup, type_def.kind().clone()))
+    }
+}
+
+impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
+    type Type = Typed;
+    type Output = Result<()>;
+
+    fn visit_unary(
+        &mut self,
+        operator: &'a Origin<UnaryOp>,
+        right: &'a Expr<Self::Type>,
+        _: &'a Self::Type,
+    ) -> Self::Output {
+        self.visit_expr(right)?;
+        match operator.kind() {
+            UnaryOp::Neg => {
+                if !right.type_().is_number() {
+                    return error(
+                        diagnostic(
+                            format!("expected number, got {}", right.type_()),
+                            operator.merge(right),
+                        )
+                        .with_label(label(format!("right has type {}", right.type_()), right)),
+                    );
+                }
+            }
+            UnaryOp::Not => {}
+            UnaryOp::Ref => {}
+            UnaryOp::Deref => {},
+        }
+        Ok(())
+    }
+
+    fn visit_binary(
+        &mut self,
+        left: &'a Expr<Self::Type>,
+        operator: &'a Origin<BinaryOp>,
+        right: &'a Expr<Self::Type>,
+        _: &'a Self::Type,
+    ) -> Self::Output {
+        self.visit_expr(left)?;
+        self.visit_expr(right)?;
+        
+        Ok(match operator.kind() {
+            // (a -> a) -> a
+            BinaryOp::Set => {}
+
+            // (number -> number) -> number
+            BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Div
+            | BinaryOp::Mod
+            | BinaryOp::SetAdd
+            | BinaryOp::SetSub
+            | BinaryOp::SetMul
+            | BinaryOp::SetDiv => {
+                if !left.type_().is_number() || !right.type_().is_number() {
+                    return error(
+                        diagnostic("left and right side must be numbers", left.merge(right))
+                            .with_label(label(
+                                format!("left side has type {}", left.type_()),
+                                left,
+                            ))
+                            .with_label(label(
+                                format!("right side has type {}", right.type_()),
+                                right,
+                            )),
+                    );
+                }
+            }
+
+            // (a -> a) -> bool
+            BinaryOp::Eq | BinaryOp::Neq => {}
+
+            // (number -> number) -> bool
+            BinaryOp::Low | BinaryOp::Leq | BinaryOp::Gre | BinaryOp::Geq => {
+                if !left.type_().is_number() || !right.type_().is_number() {
+                    return error(
+                        diagnostic("left and right side must be numbers", left.merge(right))
+                            .with_label(label(
+                                format!("left side has type {}", left.type_()),
+                                left,
+                            ))
+                            .with_label(label(
+                                format!("right side has type {}", right.type_()),
+                                right,
+                            )),
+                    );
+                }
+            }
+
+            // (bool -> bool) -> bool
+            BinaryOp::And | BinaryOp::Or => {}
+        })
+    }
+
+    fn visit_access_struct(
+        &mut self,
+        left: &'a Expr<Self::Type>,
+        _: &'a Identifier,
+        _: &'a Self::Type,
+    ) -> Self::Output {
+        self.visit_expr(left)
+    }
+
+    fn visit_index_array(
+        &mut self,
+        object: &'a Expr<Self::Type>,
+        index: &'a Expr<Self::Type>,
+        _: &'a Source,
+        _: &'a Self::Type,
+    ) -> Self::Output {
+        self.visit_expr(object)?;
+        self.visit_expr(index)
+    }
+
+    fn visit_call(
+        &mut self,
+        _: &'a CallLookup<Self::Type>,
+        arguments: &'a [Expr<Self::Type>],
+        _: &'a Source,
+        _: &'a Self::Type,
+    ) -> Self::Output {
+        for argument in arguments {
+            self.visit_expr(argument)?;
+        }
+        Ok(())
+    }
+
+    fn visit_create_array(
+        &mut self,
+        fields: &'a [Expr<Self::Type>],
+        _: &'a Source,
+        _: &'a Typed,
+    ) -> Self::Output {
+        for field in fields {
+            self.visit_expr(field)?;
+        }
+        Ok(())
+    }
+
+    fn visit_create_struct(
+        &mut self,
+        fields: &'a [(Identifier, Expr<Self::Type>)],
+        _: &'a Source,
+        _: &'a Typed,
+    ) -> Self::Output {
+        for (_, init) in fields {
+            self.visit_expr(init)?;
+        }
+        Ok(())
+    }
+
+    fn visit_ternary(
+        &mut self,
+        condition: &'a Expr<Self::Type>,
+        if_branch: &'a Expr<Self::Type>,
+        else_branch: &'a Expr<Self::Type>,
+        _: &'a Source,
+        _: &'a Self::Type,
+    ) -> Self::Output {
+        self.visit_expr(condition)?;
+        self.visit_expr(if_branch)?;
+        self.visit_expr(else_branch)
+    }
+
+    fn visit_literal(&mut self, value: &'a Origin<Literal>, type_: &'a Self::Type) -> Self::Output {
+        match value.kind() {
+            Literal::Int(_) if !type_.is_int() => {
+                error(diagnostic(format!("expected {}, got AnyInt", type_), value.source()))
+            },
+            Literal::Float(_) if !type_.is_float() => {
+                error(diagnostic(format!("expected {}, got AnyFloat", type_), value.source()))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn visit_variable(&mut self, _: &'a VarLookup, _: &'a Self::Type) -> Self::Output {
+        Ok(())
     }
 }

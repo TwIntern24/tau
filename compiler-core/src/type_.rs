@@ -15,7 +15,11 @@
 
 use crate::error::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
-use std::{fmt, ops::Deref, sync::{Arc, RwLock}};
+use std::{
+    fmt,
+    ops::Deref,
+    sync::{Arc, RwLock},
+};
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub mod declaration;
@@ -73,8 +77,8 @@ impl Type {
             (Self::Named { .. }, Self::Fn { .. } | Self::Array { .. } | Self::Ptr { .. }) => false,
             (named @ Self::Named { .. }, Self::Var { type_: lock }) => match lock.try_read() {
                 Ok(type_var) => type_var.deref().same_as_other_type(named),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             (
                 // TODO: bring them back when we have a better implementation
                 // for imports
@@ -104,8 +108,8 @@ impl Type {
             (Self::Fn { .. }, Self::Named { .. } | Self::Array { .. } | Self::Ptr { .. }) => false,
             (function @ Self::Fn { .. }, Self::Var { type_: lock }) => match lock.try_read() {
                 Ok(type_var) => type_var.deref().same_as_other_type(function),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             (
                 Self::Fn { arguments, return_ },
                 Self::Fn {
@@ -122,15 +126,13 @@ impl Type {
             }
             (Type::Var { type_: lock }, other) => match lock.try_read() {
                 Ok(type_var) => type_var.deref().same_as_other_type(other),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             (Self::Array { .. }, Self::Named { .. } | Self::Fn { .. } | Self::Ptr { .. }) => false,
-            (array @ Self::Array { .. }, Type::Var { type_: lock }) => {
-                match lock.try_read() {
-                    Ok(type_var) => type_var.deref().same_as_other_type(array),
-                    Err(_) => unreachable!()
-                }
-            }
+            (array @ Self::Array { .. }, Type::Var { type_: lock }) => match lock.try_read() {
+                Ok(type_var) => type_var.deref().same_as_other_type(array),
+                Err(_) => unreachable!(),
+            },
             (
                 Self::Array { type_, size },
                 Self::Array {
@@ -139,12 +141,10 @@ impl Type {
                 },
             ) => type_.same_as(other_type) && size == other_size,
             (Self::Ptr { .. }, Self::Named { .. } | Self::Fn { .. } | Self::Array { .. }) => false,
-            (ptr @ Self::Ptr { .. }, Type::Var { type_:lock }) => {
-                match lock.try_read() {
-                    Ok(type_var) => type_var.deref().same_as_other_type(ptr),
-                    Err(_) => unreachable!()
-                }
-            }
+            (ptr @ Self::Ptr { .. }, Type::Var { type_: lock }) => match lock.try_read() {
+                Ok(type_var) => type_var.deref().same_as_other_type(ptr),
+                Err(_) => unreachable!(),
+            },
             (
                 Self::Ptr { type_, .. },
                 Self::Ptr {
@@ -166,8 +166,8 @@ impl Type {
         match self {
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_unbound(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -176,8 +176,8 @@ impl Type {
         match self {
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_variable(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -187,8 +187,8 @@ impl Type {
             Self::Named { name, .. } => *name == static_symbol!("bool"),
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_bool(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -197,13 +197,13 @@ impl Type {
         match self {
             Self::Named { name, .. } => matches!(
                 name.as_str(),
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+                "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64"
             ),
-            
+
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_int(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -213,8 +213,8 @@ impl Type {
             Self::Named { name, .. } => matches!(name.as_str(), "f32" | "f64"),
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_float(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -223,12 +223,21 @@ impl Type {
         match self {
             Self::Named { name, .. } => matches!(
                 name.as_str(),
-                "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64"
+                "u8" | "u16"
+                    | "u32"
+                    | "u64"
+                    | "usize"
+                    | "i8"
+                    | "i16"
+                    | "i32"
+                    | "i64"
+                    | "f32"
+                    | "f64"
             ),
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_number(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -238,8 +247,8 @@ impl Type {
             Self::Named { name, .. } => *name == static_symbol!("str"),
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_str(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -249,8 +258,8 @@ impl Type {
             Self::Fn { .. } => true,
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_func(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -261,7 +270,7 @@ impl Type {
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_void(),
                 Err(_) => unreachable!(),
-            }
+            },
             _ => false,
         }
     }
@@ -277,6 +286,7 @@ impl Type {
                     | "u16"
                     | "u32"
                     | "u64"
+                    | "usize"
                     | "i8"
                     | "i16"
                     | "i32"
@@ -287,8 +297,8 @@ impl Type {
             Self::Array { .. } => true,
             Self::Var { type_: lock } => match lock.try_read() {
                 Ok(type_var) => type_var.deref().is_aggregate(),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
             _ => false,
         }
     }
@@ -326,6 +336,10 @@ unsafe impl Sync for Type {}
 ///
 /// It two types are found to not be the same an error is returned.
 pub fn unify(unified: Typed, expected: Typed) -> Result<(), Diagnostic<FileId>> {
+    // We don't want to unify the link, we want to unify the type behind the
+    // link.
+    let unified = collapse_links(unified);
+
     if let Type::Var { type_: lock } = unified.deref() {
         let type_var = {
             match lock.try_read() {
@@ -333,22 +347,20 @@ pub fn unify(unified: Typed, expected: Typed) -> Result<(), Diagnostic<FileId>> 
                 Err(_) => unreachable!(),
             }
         };
-    
+
         return match type_var {
-            TypeVar::Link { type_: t } => {
-                unify(t, expected)
-            }
-    
+            TypeVar::Link { type_: t } => unify(t, expected),
+
             TypeVar::Unbound { id } => {
                 unify_unbound_type(&expected, id)?;
-    
+
                 *lock.write().unwrap() = TypeVar::Link {
                     type_: expected.clone(),
                 };
-    
+
                 Ok(())
             }
-    
+
             TypeVar::Generic { id } => {
                 if let Type::Var { type_: lock } = expected.deref()
                     && lock.read().unwrap().is_unbound()
@@ -356,7 +368,7 @@ pub fn unify(unified: Typed, expected: Typed) -> Result<(), Diagnostic<FileId>> 
                     *lock.write().unwrap() = TypeVar::Generic { id };
                     return Ok(());
                 }
-    
+
                 Err(Diagnostic::error().with_message("could not unify"))
             }
         };
@@ -408,9 +420,16 @@ pub fn unify(unified: Typed, expected: Typed) -> Result<(), Diagnostic<FileId>> 
 
             unify(return1.clone(), return2.clone())
         }
-        (Type::Ptr { type_: unified, .. }, Type::Ptr { type_: expected, .. }) => unify(unified.clone(), expected.clone()),
+        (
+            Type::Ptr { type_: unified, .. },
+            Type::Ptr {
+                type_: expected, ..
+            },
+        ) => unify(unified.clone(), expected.clone()),
 
-        _ => Err(Diagnostic::error().with_message(format!("expected {}, got {}", unified, expected))),
+        _ => {
+            Err(Diagnostic::error().with_message(format!("expected {}, got {}", unified, expected)))
+        }
     }
 }
 
@@ -436,8 +455,8 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId
                 }
 
                 TypeVar::Generic { .. } => Ok(()),
-            }
-            Err(_) => unreachable!()
+            },
+            Err(_) => unreachable!(),
         },
 
         Type::Fn { arguments, return_ } => {
@@ -454,16 +473,14 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId
 pub fn generalize(t: Typed) -> Typed {
     match t.deref() {
         Type::Var { type_: lock } => match lock.try_read() {
-            Ok(type_var) => {
-                match type_var.deref() {
-                    TypeVar::Unbound { id } => generic_var(*id),
-                    TypeVar::Link { type_ } => generalize(type_.clone()),
-                    TypeVar::Generic { .. } => Arc::new(Type::Var {
-                        type_: lock.clone(),
-                    }),
-                }
-            }
-            Err(_) => unreachable!()
+            Ok(type_var) => match type_var.deref() {
+                TypeVar::Unbound { id } => generic_var(*id),
+                TypeVar::Link { type_ } => generalize(type_.clone()),
+                TypeVar::Generic { .. } => Arc::new(Type::Var {
+                    type_: lock.clone(),
+                }),
+            },
+            Err(_) => unreachable!(),
         },
 
         Type::Named { name, arguments } => {

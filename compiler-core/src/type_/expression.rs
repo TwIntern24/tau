@@ -2,7 +2,7 @@ use crate::{
     analyzer::SemanticAnalyzer,
     ast::{
         Identifier, Location, TypedExpr, Unfold,
-        expression::{Expr, ExprFolder, TypedExprVisitor, ExprKind},
+        expression::{Expr, ExprFolder, ExprKind, TypedExprVisitor},
         fold_vec,
         lookup::{AdlLookup, CallLookup, VarLookup},
         origin::{BinaryOp, Literal, Origin, UnaryOp},
@@ -12,6 +12,7 @@ use crate::{
     lexer::Source,
     type_::{Type, Typed, Untyped, collapse_links, prelude::*, unify},
 };
+use codespan_reporting::diagnostic::Diagnostic;
 
 impl<'a> ExprFolder for SemanticAnalyzer<'a> {
     type Type = Untyped;
@@ -38,19 +39,23 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
                 let type_ = ptr(right.type_().clone(), true);
                 Ok(unary(operator, right, type_))
             }
-            UnaryOp::Deref => match right.type_().as_ref() {
-                Type::Ptr { type_, .. } => {
-                    let type_ = type_.clone();
-                    Ok(unary(operator, right, type_))
+            UnaryOp::Deref => {
+                // Type must be known here
+                let type_ = collapse_links(right.type_().clone());
+                match type_.as_ref() {
+                    Type::Ptr { type_, .. } => {
+                        let inner_type = type_.clone();
+                        Ok(unary(operator, right, inner_type))
+                    }
+                    _ => error(
+                        diagnostic(
+                            format!("expected pointer, got {}", right.type_()),
+                            operator.merge(&right),
+                        )
+                        .with_label(label(format!("right has type {}", right.type_()), &right)),
+                    ),
                 }
-                _ => error(
-                    diagnostic(
-                        format!("expected pointer, got {}", right.type_()),
-                        operator.merge(&right),
-                    )
-                    .with_label(label(format!("right has type {}", right.type_()), &right)),
-                ),
-            },
+            }
         }
     }
 
@@ -216,10 +221,7 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
         _: Self::Type,
     ) -> Self::Output {
         let object = self.infer(object)?;
-        let index = self.infer(index)?;
-        if !index.type_().is_int() {
-            return error(diagnostic("index is not an integer", source));
-        }
+        let index = self.infer_and_unify(index, usize())?;
         match collapse_links(object.type_().clone()).as_ref() {
             Type::Array { type_, .. } => Ok(index_array(object, index, source, type_.clone())),
             _ => error(diagnostic("not an array", source)),
@@ -369,8 +371,8 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
     }
 
     fn fold_variable(&mut self, lookup: VarLookup, _: Self::Type) -> Self::Output {
-        let type_def = self.environment.find_var(lookup.kind(), lookup.name())?;
-        Ok(variable(lookup, type_def.kind().clone()))
+        let origin = self.environment.find_var(lookup.kind(), lookup.name())?;
+        Ok(variable(lookup, link(origin.kind().clone())))
     }
 }
 
@@ -399,7 +401,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
             }
             UnaryOp::Not => {}
             UnaryOp::Ref => {}
-            UnaryOp::Deref => {},
+            UnaryOp::Deref => {}
         }
         Ok(())
     }
@@ -413,7 +415,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
     ) -> Self::Output {
         self.visit_expr(left)?;
         self.visit_expr(right)?;
-        
+
         Ok(match operator.kind() {
             // (a -> a) -> a
             BinaryOp::Set => {}
@@ -431,10 +433,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
                 if !left.type_().is_number() || !right.type_().is_number() {
                     return error(
                         diagnostic("left and right side must be numbers", left.merge(right))
-                            .with_label(label(
-                                format!("left side has type {}", left.type_()),
-                                left,
-                            ))
+                            .with_label(label(format!("left side has type {}", left.type_()), left))
                             .with_label(label(
                                 format!("right side has type {}", right.type_()),
                                 right,
@@ -451,10 +450,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
                 if !left.type_().is_number() || !right.type_().is_number() {
                     return error(
                         diagnostic("left and right side must be numbers", left.merge(right))
-                            .with_label(label(
-                                format!("left side has type {}", left.type_()),
-                                left,
-                            ))
+                            .with_label(label(format!("left side has type {}", left.type_()), left))
                             .with_label(label(
                                 format!("right side has type {}", right.type_()),
                                 right,
@@ -481,10 +477,16 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
         &mut self,
         object: &'a Expr<Self::Type>,
         index: &'a Expr<Self::Type>,
-        _: &'a Source,
+        source: &'a Source,
         _: &'a Self::Type,
     ) -> Self::Output {
         self.visit_expr(object)?;
+        if !index.type_().is_int() {
+            return error(
+                diagnostic("index is not an integer", *source)
+                    .with_label(label(format!("index has type {}", index.type_()), index)),
+            );
+        }
         self.visit_expr(index)
     }
 
@@ -540,11 +542,53 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
 
     fn visit_literal(&mut self, value: &'a Origin<Literal>, type_: &'a Self::Type) -> Self::Output {
         match value.kind() {
-            Literal::Int(_) if !type_.is_int() => {
-                error(diagnostic(format!("expected {}, got AnyInt", type_), value.source()))
-            },
-            Literal::Float(_) if !type_.is_float() => {
-                error(diagnostic(format!("expected {}, got AnyFloat", type_), value.source()))
+            Literal::Int(_) => {
+                if type_.is_unbound() {
+                    Err(Error::from(vec![
+                        diagnostic(
+                            format!("size of AnyInt could not be infered"),
+                            value.source(),
+                        )
+                        .with_label(label(
+                            "exect size (e.g. i64) must be known here",
+                            value.source(),
+                        )),
+                        Diagnostic::help()
+                            .with_message("bind the expression with let to a congrete type")
+                            .with_label(primary(value.source())),
+                    ]))
+                } else if !type_.is_int() {
+                    error(diagnostic(
+                        format!("expected {}, got AnyInt", type_),
+                        value.source(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            Literal::Float(_) => {
+                if type_.is_unbound() {
+                    Err(Error::from(vec![
+                        diagnostic(
+                            format!("size of AnyFloat could not be infered"),
+                            value.source(),
+                        )
+                        .with_label(label(
+                            "exect size (e.g. f64) must be known here",
+                            value.source(),
+                        )),
+                        Diagnostic::help()
+                            .with_message("bind the expression with let to a congrete type")
+                            .with_label(primary(value.source())),
+                    ]))
+                } else if !type_.is_float() {
+                    error(diagnostic(
+                        format!("expected {}, got AnyFloat", type_),
+                        value.source(),
+                    ))
+                } else {
+                    Ok(())
+                }
             }
             _ => Ok(()),
         }

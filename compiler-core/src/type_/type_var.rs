@@ -35,8 +35,8 @@ impl TypeVar {
             ) => false,
             (one @ TypeVar::Generic { .. }, Type::Var { type_: lock }) => match lock.try_read() {
                 Ok(type_var) => one.same_as(type_var.deref()),
-                Err(_) => unreachable!()
-            }
+                Err(_) => unreachable!(),
+            },
         }
     }
 
@@ -103,17 +103,18 @@ impl fmt::Display for TypeVar {
         match self {
             Self::Unbound { id } => write!(f, "unbound (#{})", id),
             Self::Link { type_ } => type_.fmt(f),
-            Self::Generic { id } => write!(f, "generic (#{})", id)
+            Self::Generic { id } => write!(f, "generic (#{})", id),
         }
     }
 }
 
 pub fn collapse_links(t: Arc<Type>) -> Arc<Type> {
-    if let Type::Var { type_: lock } = t.deref()
-    {
+    if let Type::Var { type_: lock } = t.deref() {
         match lock.try_read() {
-            Ok(type_var) => if let TypeVar::Link { type_ } = type_var.deref() {
-                return collapse_links(type_.clone());
+            Ok(type_var) => {
+                if let TypeVar::Link { type_ } = type_var.deref() {
+                    return collapse_links(type_.clone());
+                }
             }
             _ => {}
         }

@@ -29,20 +29,12 @@ pub fn i8() -> Typed {
     native(static_symbol!("i8"))
 }
 
+pub fn usize() -> Typed {
+    native(static_symbol!("usize"))
+}
+
 pub fn void() -> Typed {
     native(static_symbol!("void"))
-}
-
-/// Any int literal of unknown size.
-pub fn int() -> Typed {
-    // TODO: return an unsized int
-    native(static_symbol!("i64"))
-}
-
-/// Any float literal of unknown size.
-pub fn float() -> Typed {
-    // TODO: return an unsized float
-    native(static_symbol!("f64"))
 }
 
 pub fn str() -> Typed {

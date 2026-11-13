@@ -15,7 +15,7 @@
 
 use crate::error::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
-use std::{cell::RefCell, fmt, ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::{Arc, RwLock}};
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub mod declaration;
@@ -29,7 +29,7 @@ pub mod uid;
 pub use crate::type_::prelude::*;
 pub use type_var::{TypeVar, collapse_links};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Type {
     /// A named type such as i32, f64 or a custom type such as Vec.
     /// The type can take other types as generic arguments
@@ -49,7 +49,7 @@ pub enum Type {
     },
 
     Var {
-        type_: Arc<RefCell<TypeVar>>,
+        type_: Arc<RwLock<TypeVar>>,
     },
 
     Array {
@@ -71,8 +71,9 @@ impl Type {
     pub fn same_as(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Named { .. }, Self::Fn { .. } | Self::Array { .. } | Self::Ptr { .. }) => false,
-            (named @ Self::Named { .. }, Self::Var { type_ }) => {
-                type_.as_ref().borrow().same_as_other_type(named)
+            (named @ Self::Named { .. }, Self::Var { type_: lock }) => match lock.try_read() {
+                Ok(type_var) => type_var.deref().same_as_other_type(named),
+                Err(_) => unreachable!()
             }
             (
                 // TODO: bring them back when we have a better implementation
@@ -101,8 +102,9 @@ impl Type {
                         .all(|(one, other)| one.same_as(other))
             }
             (Self::Fn { .. }, Self::Named { .. } | Self::Array { .. } | Self::Ptr { .. }) => false,
-            (function @ Self::Fn { .. }, Self::Var { type_ }) => {
-                type_.as_ref().borrow().same_as_other_type(function)
+            (function @ Self::Fn { .. }, Self::Var { type_: lock }) => match lock.try_read() {
+                Ok(type_var) => type_var.deref().same_as_other_type(function),
+                Err(_) => unreachable!()
             }
             (
                 Self::Fn { arguments, return_ },
@@ -118,10 +120,16 @@ impl Type {
                         .all(|(one, other)| one.same_as(other))
                     && return_.same_as(other_return)
             }
-            (Type::Var { type_ }, other) => type_.as_ref().borrow().same_as_other_type(other),
+            (Type::Var { type_: lock }, other) => match lock.try_read() {
+                Ok(type_var) => type_var.deref().same_as_other_type(other),
+                Err(_) => unreachable!()
+            }
             (Self::Array { .. }, Self::Named { .. } | Self::Fn { .. } | Self::Ptr { .. }) => false,
-            (array @ Self::Array { .. }, Type::Var { type_ }) => {
-                type_.as_ref().borrow().same_as_other_type(array)
+            (array @ Self::Array { .. }, Type::Var { type_: lock }) => {
+                match lock.try_read() {
+                    Ok(type_var) => type_var.deref().same_as_other_type(array),
+                    Err(_) => unreachable!()
+                }
             }
             (
                 Self::Array { type_, size },
@@ -131,8 +139,11 @@ impl Type {
                 },
             ) => type_.same_as(other_type) && size == other_size,
             (Self::Ptr { .. }, Self::Named { .. } | Self::Fn { .. } | Self::Array { .. }) => false,
-            (ptr @ Self::Ptr { .. }, Type::Var { type_ }) => {
-                type_.as_ref().borrow().same_as_other_type(ptr)
+            (ptr @ Self::Ptr { .. }, Type::Var { type_:lock }) => {
+                match lock.try_read() {
+                    Ok(type_var) => type_var.deref().same_as_other_type(ptr),
+                    Err(_) => unreachable!()
+                }
             }
             (
                 Self::Ptr { type_, .. },
@@ -153,14 +164,20 @@ impl Type {
 
     pub fn is_unbound(&self) -> bool {
         match self {
-            Self::Var { type_ } => type_.borrow().is_unbound(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_unbound(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
 
     pub fn is_variable(&self) -> bool {
         match self {
-            Self::Var { type_ } => type_.borrow().is_variable(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_variable(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -168,7 +185,10 @@ impl Type {
     pub fn is_bool(&self) -> bool {
         match self {
             Self::Named { name, .. } => *name == static_symbol!("bool"),
-            Self::Var { type_ } => type_.borrow().is_bool(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_bool(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -179,7 +199,11 @@ impl Type {
                 name.as_str(),
                 "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
             ),
-            Self::Var { type_ } => type_.borrow().is_int(),
+            
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_int(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -187,7 +211,10 @@ impl Type {
     pub fn is_float(&self) -> bool {
         match self {
             Self::Named { name, .. } => matches!(name.as_str(), "f32" | "f64"),
-            Self::Var { type_ } => type_.borrow().is_float(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_float(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -198,7 +225,10 @@ impl Type {
                 name.as_str(),
                 "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64"
             ),
-            Self::Var { type_ } => type_.borrow().is_float(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_number(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -206,7 +236,10 @@ impl Type {
     pub fn is_str(&self) -> bool {
         match self {
             Self::Named { name, .. } => *name == static_symbol!("str"),
-            Self::Var { type_ } => type_.borrow().is_int(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_str(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -214,7 +247,10 @@ impl Type {
     pub fn is_func(&self) -> bool {
         match self {
             Self::Fn { .. } => true,
-            Self::Var { type_ } => type_.borrow().is_func(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_func(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -222,7 +258,10 @@ impl Type {
     pub fn is_void(&self) -> bool {
         match self {
             Self::Named { name, .. } => *name == static_symbol!("void"),
-            Self::Var { type_ } => type_.borrow().is_void(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_void(),
+                Err(_) => unreachable!(),
+            }
             _ => false,
         }
     }
@@ -246,7 +285,10 @@ impl Type {
                     | "f64"
             ),
             Self::Array { .. } => true,
-            Self::Var { type_ } => type_.borrow().is_aggregate(),
+            Self::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => type_var.deref().is_aggregate(),
+                Err(_) => unreachable!()
+            }
             _ => false,
         }
     }
@@ -262,10 +304,16 @@ impl fmt::Display for Type {
                 }
                 write!(formatter, "{}", return_)
             }
-            Self::Var { type_ } => write!(formatter, "{:?}", type_),
+            Self::Var { type_ } => type_.read().unwrap().fmt(formatter),
             Self::Array { type_, size } => write!(formatter, "[{}; {}]", type_, size),
             Self::Ptr { type_, .. } => write!(formatter, "*{}", type_),
         }
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        self.same_as(other)
     }
 }
 
@@ -282,53 +330,48 @@ pub fn unify(t1: Typed, t2: Typed) -> Result<(), Diagnostic<FileId>> {
         return Ok(());
     }
 
-    // Collapse right hand side type links. Left hand side will be collapsed in
-    // the next block.
-    if let Type::Var { type_ } = t2.deref()
-        && let TypeVar::Link { type_ } = type_.borrow().deref()
-    {
-        return unify(t1, type_.clone());
-    }
+    if let Type::Var { type_: lock } = t1.deref() {
+        match lock.try_read() {
+            Ok(type_var) => return match type_var.deref() {
+                TypeVar::Link { type_: t } => {
+                    unify(t.clone(), t2)?;
 
-    if let Type::Var { type_ } = t1.deref() {
-        return match type_.borrow().deref() {
-            TypeVar::Link { type_: t } => {
-                unify(t.clone(), t2)?;
-
-                // Note that type_ is always a Link in this branch.
-                // unify may replace t's inner value with another link
-                // (See the Action::Link branch just above)
-                // This can cause the compiler to build up an ever-growing chain
-                // of links. Therefore, we try to collapse the
-                // links. However, the RefCell in type_
-                // may already be borrowed by collapsing the links in t2 at the
-                // start of the function, in which case accept
-                // the extra link.
-                if let Ok(mut type_) = type_.try_borrow_mut() {
-                    *type_ = TypeVar::Link {
-                        type_: collapse_links(t.clone()),
+                    // Note that type_ is always a Link in this branch.
+                    // unify may replace t's inner value with another link
+                    // (See the Action::Link branch just above)
+                    // This can cause the compiler to build up an ever-growing chain
+                    // of links. Therefore, we try to collapse the
+                    // links. However, the RwLock in type_
+                    // may already be borrowed by collapsing the links in t2 at the
+                    // start of the function, in which case accept
+                    // the extra link.
+                    if let Ok(mut type_) = lock.write() {
+                        *type_ = TypeVar::Link {
+                            type_: collapse_links(t.clone()),
+                        }
                     }
-                }
-                Ok(())
-            }
-
-            TypeVar::Unbound { id } => {
-                unify_unbound_type(&t2, *id)?;
-                {
-                    *type_.borrow_mut() = TypeVar::Link { type_: t2.clone() };
                     Ok(())
                 }
-            }
 
-            TypeVar::Generic { id } => {
-                if let Type::Var { type_ } = t2.deref()
-                    && type_.borrow().is_unbound()
-                {
-                    *type_.borrow_mut() = TypeVar::Generic { id: *id };
-                    return Ok(());
+                TypeVar::Unbound { id } => {
+                    unify_unbound_type(&t2, *id)?;
+                    {
+                        *lock.write().unwrap() = TypeVar::Link { type_: t2.clone() };
+                        Ok(())
+                    }
                 }
-                Err(Diagnostic::error().with_message("could not unify"))
-            }
+
+                TypeVar::Generic { id } => {
+                    if let Type::Var { type_: lock } = t2.deref()
+                        && lock.read().unwrap().is_unbound()
+                    {
+                        *lock.write().unwrap() = TypeVar::Generic { id: *id };
+                        return Ok(());
+                    }
+                    Err(Diagnostic::error().with_message("could not unify"))
+                }
+            },
+            Err(_) => unreachable!()
         };
     }
 
@@ -390,18 +433,21 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId
             Ok(())
         }
 
-        Type::Var { type_ } => match type_.borrow().deref() {
-            TypeVar::Link { type_, .. } => unify_unbound_type(type_, own_id),
+        Type::Var { type_: lock } => match lock.try_read() {
+            Ok(type_var) => match type_var.deref() {
+                TypeVar::Link { type_, .. } => unify_unbound_type(type_.deref(), own_id),
 
-            TypeVar::Unbound { id } => {
-                if id == &own_id {
-                    Err(Diagnostic::error().with_message("recursive type"))
-                } else {
-                    Ok(())
+                TypeVar::Unbound { id } => {
+                    if *id == own_id {
+                        Err(Diagnostic::error().with_message("recursive type"))
+                    } else {
+                        Ok(())
+                    }
                 }
-            }
 
-            TypeVar::Generic { .. } => Ok(()),
+                TypeVar::Generic { .. } => Ok(()),
+            }
+            Err(_) => unreachable!()
         },
 
         Type::Fn { arguments, return_ } => {
@@ -417,12 +463,17 @@ fn unify_unbound_type(type_: &Type, own_id: u64) -> Result<(), Diagnostic<FileId
 
 pub fn generalize(t: Typed) -> Typed {
     match t.deref() {
-        Type::Var { type_ } => match type_.borrow().deref() {
-            TypeVar::Unbound { id } => generic_var(*id),
-            TypeVar::Link { type_ } => generalize(type_.clone()),
-            TypeVar::Generic { .. } => Arc::new(Type::Var {
-                type_: type_.clone(),
-            }),
+        Type::Var { type_: lock } => match lock.try_read() {
+            Ok(type_var) => {
+                match type_var.deref() {
+                    TypeVar::Unbound { id } => generic_var(*id),
+                    TypeVar::Link { type_ } => generalize(type_.clone()),
+                    TypeVar::Generic { .. } => Arc::new(Type::Var {
+                        type_: lock.clone(),
+                    }),
+                }
+            }
+            Err(_) => unreachable!()
         },
 
         Type::Named { name, arguments } => {

@@ -1,5 +1,5 @@
 use crate::type_::{Type, TypeVar};
-use std::{cell::RefCell, sync::Arc};
+use std::sync::{Arc, RwLock};
 use symbol_table::{GlobalSymbol, static_symbol};
 
 pub type Untyped = ();
@@ -62,18 +62,18 @@ pub fn array(inner: Typed, size: usize) -> Typed {
 
 pub fn generic_var(id: u64) -> Arc<Type> {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Generic { id })),
+        type_: Arc::new(RwLock::new(TypeVar::Generic { id })),
     })
 }
 
 pub fn unbound_var(id: u64) -> Arc<Type> {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Unbound { id })),
+        type_: Arc::new(RwLock::new(TypeVar::Unbound { id })),
     })
 }
 
 pub fn link(type_: Arc<Type>) -> Arc<Type> {
     Arc::new(Type::Var {
-        type_: Arc::new(RefCell::new(TypeVar::Link { type_ })),
+        type_: Arc::new(RwLock::new(TypeVar::Link { type_ })),
     })
 }

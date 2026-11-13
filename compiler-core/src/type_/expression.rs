@@ -395,8 +395,8 @@ impl<'a> ExprFolder for SemanticAnalyzer<'a> {
 
     fn fold_literal(&mut self, value: Origin<Literal>, _: Self::Type) -> Self::Output {
         let type_ = match value.kind() {
-            Literal::Int(_) => int(),
-            Literal::Float(_) => float(),
+            Literal::Int(_) => self.environment.new_unbound_var(),
+            Literal::Float(_) => self.environment.new_unbound_var(),
             Literal::Bool(_) => bool(),
             Literal::String(_) => str(),
         };

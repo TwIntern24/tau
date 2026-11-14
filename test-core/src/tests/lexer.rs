@@ -1,4 +1,5 @@
 use crate::assert_ok;
+use pretty_assertions::assert_eq;
 use symbol_table::static_symbol;
 use tau_core::{
     error::Result,

@@ -1,11 +1,18 @@
 use crate::assert_ok;
 use bpaf::doc::Section;
+use pretty_assertions::assert_eq;
 use std::{
     fs::{self, File},
     io::Read,
     path::Path,
 };
 use tau_cli::options::options;
+
+/// Normalizes the line endings. The windows tests would fail without this
+/// because windows uses a different line ending.
+fn normalize_line_endings(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
 
 const MANPAGE_FOOTER: &str = r#"
 .SH DESCRIPTION
@@ -64,6 +71,8 @@ fn update_doc_manpage() {
     );
     let mut file = assert_ok!(File::open(&path)).expect("could open file");
     assert_ok!(file.read_to_string(&mut expected_man)).expect("could read file");
+    let man = normalize_line_endings(&man);
+    let expected_man = normalize_line_endings(&expected_man);
     fs::write(path, &man).expect("could write file");
 
     // This will fail whenever we forgot to update the docs.
@@ -117,6 +126,8 @@ fn update_doc_readme() {
     );
     let mut file = assert_ok!(File::open(&path)).expect("could open file");
     assert_ok!(file.read_to_string(&mut expected_markdown)).expect("could read file");
+    let markdown = normalize_line_endings(&markdown);
+    let expected_markdown = normalize_line_endings(&expected_markdown);
     fs::write(path, &markdown).expect("could write file");
 
     // This will fail whenever we forgot to update the docs.

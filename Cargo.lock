@@ -251,6 +251,7 @@ name = "test-cli"
 version = "0.1.0"
 dependencies = [
  "bpaf",
+ "pretty_assertions",
  "tau-lang-cli",
  "tau-lang-core",
 ]

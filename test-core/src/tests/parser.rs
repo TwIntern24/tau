@@ -1,4 +1,5 @@
 use crate::assert_ok;
+use pretty_assertions::assert_eq;
 use symbol_table::static_symbol;
 use tau_core::{
     ast::{
@@ -12,7 +13,6 @@ use tau_core::{
     parser::Parser,
     type_::prelude::*,
 };
-use pretty_assertions::assert_eq;
 
 #[test]
 fn parses_from_lexer() {

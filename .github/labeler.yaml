@@ -1,0 +1,41 @@
+"area:bin":
+- changed-files:
+  - any-glob-to-any-file: "tau-bin/**/*" 
+
+"area:ci":
+- changed-files:
+  - any-glob-to-any-file: ".github/**/*"
+
+"area:cli":
+- any:
+  - changed-files:
+    - any-glob-to-any-file: "compiler-cli/**/*"
+    - any-glob-to-any-file: "test-cli/**/*"
+
+"area:core":
+- any:
+  - changed-files:
+    - any-glob-to-any-file: "compiler-core/**/*"
+    - any-glob-to-any-file: "test-core/**/*"
+
+"area:docs":
+- any:
+  - changed-files:
+    - any-glob-to-any-file: "man/**/*"
+    - any-glob-to-any-file: "**/*.md"
+
+"area:gen-c":
+- changed-files:
+  - any-glob-to-any-file: "generator-c/**/*"
+
+"area:gen-qbe":
+- changed-files:
+  - any-glob-to-any-file: "generator-qbe/**/*" 
+
+"area:nix":
+- changed-files:
+  - any-glob-to-any-file: "flake.*" 
+
+"area:test":
+- changed-files:
+  - any-glob-to-any-file: "test-*/**/*" 

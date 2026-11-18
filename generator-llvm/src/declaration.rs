@@ -116,10 +116,11 @@ impl<'a, 'ctx> DeclFolder for LlvmCodeGen<'a, 'ctx> {
             self.variables.insert(name.symbol(), alloca);
         }
 
+        self.begin_scope();
         fold_vec(func.body, |statement| self.fold_stmt(statement))?;
 
         // Return in void functions is implicit
-        if func.return_type.is_void() {
+        if !self.end_scope() && func.return_type.is_void() {
             self.builder.build_return(None)?;
         }
 

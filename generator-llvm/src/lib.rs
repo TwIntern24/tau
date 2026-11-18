@@ -29,9 +29,12 @@ pub struct LlvmCodeGen<'a, 'ctx> {
     pub module: &'a Module<'ctx>,
     pub builder: Builder<'ctx>,
 
+    machine: TargetMachine,
     variables: HashMap<GlobalSymbol, PointerValue<'ctx>>,
     structs: HashMap<GlobalSymbol, HashMap<GlobalSymbol, u32>>,
     fn_value: Option<FunctionValue<'ctx>>,
+    /// Whether or not we break or return early from the scope.
+    scopes: Vec<bool>,
 }
 
 impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
@@ -41,35 +44,39 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
             context,
             module,
             builder: context.create_builder(),
+            machine: {
+                Target::initialize_all(&InitializationConfig::default());
+
+                // TODO: allow the cli to pass the target triple
+                let triple = TargetMachine::get_default_triple();
+                let target = Target::from_triple(&triple).unwrap();
+
+                target
+                    .create_target_machine(
+                        &triple,
+                        "generic",
+                        "",
+                        OptimizationLevel::Default,
+                        RelocMode::PIC,
+                        CodeModel::Default,
+                    )
+                    .unwrap()
+            },
             variables: HashMap::new(),
             structs: HashMap::new(),
             fn_value: None,
+            scopes: Vec::new(),
         }
     }
 
     /// Optimize llvm for the default triple.
     pub fn run_passes(&self) {
-        Target::initialize_all(&InitializationConfig::default());
-        // TODO: allow the cli to pass the target triple
-        let target_triple = TargetMachine::get_default_triple();
-        let target = Target::from_triple(&target_triple).unwrap();
-        let target_machine = target
-            .create_target_machine(
-                &target_triple,
-                "generic",
-                "",
-                OptimizationLevel::None,
-                RelocMode::PIC,
-                CodeModel::Default,
-            )
-            .unwrap();
-
         let passes: &[&str] = &["reassociate", "gvn", "simplifycfg", "mem2reg"];
 
         self.module
             .run_passes(
                 passes.join(",").as_str(),
-                &target_machine,
+                &self.machine,
                 PassBuilderOptions::create(),
             )
             .unwrap();
@@ -77,24 +84,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
 
     /// Write the compiled object file to the given path.
     pub fn write_object_file(&self, path: &Path) -> DynResult<()> {
-        Target::initialize_all(&InitializationConfig::default());
-
-        // TODO: allow the cli to pass the target triple
-        let triple = TargetMachine::get_default_triple();
-        let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
-
-        let machine = target
-            .create_target_machine(
-                &triple,
-                "generic",
-                "",
-                OptimizationLevel::Default,
-                RelocMode::PIC,
-                CodeModel::Default,
-            )
-            .ok_or("Could not create target machine")?;
-
-        machine
+        self.machine
             .write_to_file(self.module, FileType::Object, path)
             .map_err(|e| e.to_string())?;
 
@@ -123,6 +113,10 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
                 "i64" | "u64" => self.context.i64_type().as_basic_type_enum(),
                 "f32" => self.context.f32_type().as_basic_type_enum(),
                 "f64" => self.context.f64_type().as_basic_type_enum(),
+                "usize" => self
+                    .context
+                    .ptr_sized_int_type(&self.machine.get_target_data(), None)
+                    .as_basic_type_enum(),
                 // pointer to a string slice
                 "str" => {
                     Context::ptr_type(self.context, AddressSpace::default()).as_basic_type_enum()
@@ -134,11 +128,14 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
                     .expect(&format!("struct {name} exists"))
                     .as_basic_type_enum(),
             },
-            Type::Var { type_ } => match &*type_.as_ref().borrow() {
-                TypeVar::Unbound { .. } | TypeVar::Generic { .. } => {
-                    panic!("type must be resolved")
-                }
-                TypeVar::Link { type_ } => self.fold_type(&type_),
+            Type::Var { type_: lock } => match lock.try_read() {
+                Ok(type_var) => match &*type_var {
+                    TypeVar::Unbound { .. } | TypeVar::Generic { .. } => {
+                        panic!("type must be resolved")
+                    }
+                    TypeVar::Link { type_ } => self.fold_type(&type_),
+                },
+                Err(_) => unreachable!(),
             },
             Type::Array { type_, size } => self
                 .fold_type(type_)
@@ -197,5 +194,17 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
     #[inline]
     fn fn_value(&self) -> FunctionValue<'ctx> {
         self.fn_value.unwrap()
+    }
+
+    fn begin_scope(&mut self) {
+        self.scopes.push(false);
+    }
+
+    fn end_scope(&mut self) -> bool {
+        self.scopes.pop().expect("scopes not empty")
+    }
+
+    fn mark_early_return(&mut self) {
+        *self.scopes.last_mut().expect("scopes not empty") = true;
     }
 }

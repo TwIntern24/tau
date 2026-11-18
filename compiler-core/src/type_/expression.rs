@@ -550,7 +550,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
                             value.source(),
                         )
                         .with_label(label(
-                            "exect size (e.g. i64) must be known here",
+                            "exact size (e.g. i64) must be known here",
                             value.source(),
                         )),
                         Diagnostic::help()
@@ -574,7 +574,7 @@ impl<'a, 'b> TypedExprVisitor<'a> for SemanticAnalyzer<'b> {
                             value.source(),
                         )
                         .with_label(label(
-                            "exect size (e.g. f64) must be known here",
+                            "exact size (e.g. f64) must be known here",
                             value.source(),
                         )),
                         Diagnostic::help()

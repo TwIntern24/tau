@@ -9,7 +9,7 @@ This is the default CLI for the Tau programming language.
 
 ## Usage
 
-**Usage**: **`Usage`** \[**`--out-dir`**=_`DIR`_\] \[**`-o`**=_`FILENAME`_\] \[**`--crate-name`**=_`NAME`_\] \[**`--module-name`**=_`NAME`_\] \[**`-C`**=_`GEN`_\] \[\[**`--emit`**=_`ARG`_\]...\] _`PATH`_
+**Usage**: **`Usage`** \[**`--out-dir`**=_`DIR`_\] \[**`-o`**=_`FILENAME`_\] \[**`--crate-name`**=_`NAME`_\] \[**`--module-name`**=_`NAME`_\] \[**`-C`**=_`GEN`_\] \[**`--emit`**=_`ARG`_\] _`PATH`_
 
 **Available options:**
 - **`    --out-dir`**=_`DIR`_ &mdash; 

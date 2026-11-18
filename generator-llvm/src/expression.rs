@@ -13,7 +13,7 @@ use tau_core::{
     },
     error::DynResult,
     lexer::Source,
-    type_::{Type, Typed},
+    type_::{Type, Typed, type_var::collapse_links},
 };
 
 impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
@@ -40,7 +40,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
             }
 
             ExprKind::AccessStruct { left, right, .. } => {
-                let left_type = left.type_().clone();
+                let left_type = collapse_links(left.type_().clone());
                 let struct_name = match left_type.as_ref() {
                     Type::Named { name, .. } => name,
                     _ => return Err("Expected struct expression".into()),
@@ -64,7 +64,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
             }
 
             ExprKind::IndexArray { object, index, .. } => {
-                let object_type = object.type_().clone();
+                let object_type = collapse_links(object.type_().clone());
                 let index = self.fold_expr(*index)?.into_int_value();
                 let ptr = self.fold_lvalue(*object)?;
 

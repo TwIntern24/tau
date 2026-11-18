@@ -116,7 +116,7 @@ pub fn compile_file(context: &mut Context, args: &Options) -> DynResult<()> {
                 emitter.run_passes();
 
                 let folder = &args.out_dir()?;
-                for emit_type in &args.emit {
+                for emit_type in args.emit() {
                     match emit_type {
                         EmitType::Obj => {
                             let object = output(folder, args.output(), "o");

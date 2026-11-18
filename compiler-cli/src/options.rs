@@ -2,7 +2,7 @@
 //! The documentation for the CLI is automatically generated inside the
 //! `test-cli` package.
 
-use crate::{code_gen::CodeGen, emit_type::EmitType};
+use crate::{code_gen::CodeGen, emit_type::EmitList};
 use bpaf::*;
 use std::{env, io, path::PathBuf};
 use symbol_table::{GlobalSymbol, static_symbol};
@@ -52,9 +52,9 @@ pub struct Options {
     #[bpaf(
         long("emit"),
         help("Comma separeted list of types of output for the compiler to emit."),
-        fallback(vec![EmitType::default()])
+        fallback(EmitList::default())
     )]
-    pub emit: Vec<EmitType>,
+    pub emit: EmitList,
     #[bpaf(positional("PATH"), complete_shell(ShellComp::File { mask: Some("*.tau") }))]
     pub input: PathBuf,
 }
@@ -66,7 +66,7 @@ impl Options {
         output: Option<PathBuf>,
         crate_name: GlobalSymbol,
         module_name: Option<GlobalSymbol>,
-        emit: Vec<EmitType>,
+        emit: EmitList,
         code_gen: CodeGen,
     ) -> Self {
         Self {
@@ -110,6 +110,10 @@ impl Options {
                 .map(|os_str| format!("{}", os_str.display()))
                 .map_or_else(|| static_symbol!(""), GlobalSymbol::new)
         })
+    }
+
+    pub fn emit(&self) -> &EmitList {
+        &self.emit
     }
 
     /// Returns the module name, defaults to QBE if enabled, otherwise to

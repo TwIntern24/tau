@@ -1,4 +1,5 @@
 use crate::LlvmCodeGen;
+use inkwell::basic_block::BasicBlock;
 use tau_core::{
     ast::{
         Identifier,
@@ -11,12 +12,31 @@ use tau_core::{
     type_::Typed,
 };
 
+impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
+    fn fold_stmt_list(
+        &mut self,
+        statements: Vec<Stmt<Typed>>,
+        label: BasicBlock<'ctx>,
+    ) -> DynResult<()> {
+        self.begin_scope();
+        for statement in statements {
+            self.fold_stmt(statement)?;
+        }
+        if !self.end_scope() {
+            self.builder.build_unconditional_branch(label)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a, 'ctx> StmtFolder for LlvmCodeGen<'a, 'ctx> {
     type Type = Typed;
     type Output = DynResult<()>;
 
     fn fold_block(&mut self, statements: Vec<Stmt<Self::Type>>, _: Source) -> Self::Output {
+        self.begin_scope();
         fold_vec(statements, |statement| self.fold_stmt(statement))?;
+        self.end_scope();
         Ok(())
     }
 
@@ -44,10 +64,12 @@ impl<'a, 'ctx> StmtFolder for LlvmCodeGen<'a, 'ctx> {
         } else {
             self.builder.build_return(None)?;
         };
+        self.mark_early_return();
         Ok(())
     }
 
     fn fold_break(&mut self, _: Source) -> Self::Output {
+        self.mark_early_return();
         todo!()
     }
 
@@ -72,16 +94,16 @@ impl<'a, 'ctx> StmtFolder for LlvmCodeGen<'a, 'ctx> {
 
         // if block
         self.builder.position_at_end(if_block);
-        fold_vec(if_branch, |statement| self.fold_stmt(statement))?;
-        self.builder.build_unconditional_branch(end_block)?;
+        self.fold_stmt_list(if_branch, end_block)?;
         self.builder.get_insert_block().unwrap();
 
         // else block
         self.builder.position_at_end(else_block);
         if let Some(else_branch) = else_branch {
-            fold_vec(else_branch, |statement| self.fold_stmt(statement))?;
+            self.fold_stmt_list(else_branch, end_block)?;
+        } else {
+            self.builder.build_unconditional_branch(end_block)?;
         }
-        self.builder.build_unconditional_branch(end_block)?;
         self.builder.get_insert_block().unwrap();
 
         // merge block
@@ -111,8 +133,7 @@ impl<'a, 'ctx> StmtFolder for LlvmCodeGen<'a, 'ctx> {
 
         // execute the loop body
         self.builder.position_at_end(loop_block);
-        fold_vec(body, |statement| self.fold_stmt(statement))?;
-        self.builder.build_unconditional_branch(check_block)?;
+        self.fold_stmt_list(body, check_block)?;
 
         self.builder.position_at_end(end_block);
 

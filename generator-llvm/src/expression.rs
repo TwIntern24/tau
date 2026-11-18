@@ -167,7 +167,7 @@ impl<'a, 'ctx> ExprFolder for LlvmCodeGen<'a, 'ctx> {
                     "not",
                 )?;
 
-                Ok(self.from_condition(result))
+                Ok(self.as_bool(result))
             }
 
             UnaryOp::Ref => {
@@ -280,7 +280,7 @@ impl<'a, 'ctx> ExprFolder for LlvmCodeGen<'a, 'ctx> {
                     )?
                 };
 
-                Ok(self.from_condition(result))
+                Ok(self.as_bool(result))
             }
 
             BinaryOp::And | BinaryOp::Or => {

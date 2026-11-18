@@ -21,10 +21,12 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
         self.begin_scope();
         for statement in statements {
             self.fold_stmt(statement)?;
+            if self.has_returned() {
+                return Ok(());
+            }
         }
-        if !self.end_scope() {
-            self.builder.build_unconditional_branch(label)?;
-        }
+        self.end_scope();
+        self.builder.build_unconditional_branch(label)?;
         Ok(())
     }
 }
@@ -70,7 +72,9 @@ impl<'a, 'ctx> StmtFolder for LlvmCodeGen<'a, 'ctx> {
 
     fn fold_break(&mut self, _: Source) -> Self::Output {
         self.mark_early_return();
-        todo!()
+        let label = self.loop_label();
+        self.builder.build_unconditional_branch(*label)?;
+        Ok(())
     }
 
     fn fold_if(
@@ -132,8 +136,10 @@ impl<'a, 'ctx> StmtFolder for LlvmCodeGen<'a, 'ctx> {
             .build_conditional_branch(condition, loop_block, end_block)?;
 
         // execute the loop body
+        self.begin_loop(end_block);
         self.builder.position_at_end(loop_block);
         self.fold_stmt_list(body, check_block)?;
+        self.end_loop();
 
         self.builder.position_at_end(end_block);
 

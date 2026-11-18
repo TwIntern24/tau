@@ -78,7 +78,7 @@ impl<'a, 'ctx> DeclFolder for LlvmCodeGen<'a, 'ctx> {
         let fields = struct_
             .fields
             .iter()
-            .map(|(_, type_)| self.fold_type(type_).into())
+            .map(|(_, type_)| self.fold_type(type_))
             .collect::<Vec<BasicTypeEnum>>();
 
         let indices = struct_
@@ -118,11 +118,11 @@ impl<'a, 'ctx> DeclFolder for LlvmCodeGen<'a, 'ctx> {
 
         self.begin_scope();
         fold_vec(func.body, |statement| self.fold_stmt(statement))?;
-
         // Return in void functions is implicit
-        if !self.end_scope() && func.return_type.is_void() {
+        if !self.has_returned() && func.return_type.is_void() {
             self.builder.build_return(None)?;
         }
+        self.end_scope();
 
         if function.verify(true) {
             Ok(())

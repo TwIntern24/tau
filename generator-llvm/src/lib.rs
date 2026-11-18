@@ -1,5 +1,6 @@
 use inkwell::{
     AddressSpace, IntPredicate, OptimizationLevel,
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     module::Module,
@@ -33,8 +34,10 @@ pub struct LlvmCodeGen<'a, 'ctx> {
     variables: HashMap<GlobalSymbol, PointerValue<'ctx>>,
     structs: HashMap<GlobalSymbol, HashMap<GlobalSymbol, u32>>,
     fn_value: Option<FunctionValue<'ctx>>,
-    /// Whether or not we break or return early from the scope.
+    /// Stack of all scopes. Each scope tracks if it has already returned.
     scopes: Vec<bool>,
+    /// Stack of all loop exit labels.
+    loops: Vec<BasicBlock<'ctx>>,
 }
 
 impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
@@ -66,6 +69,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
             structs: HashMap::new(),
             fn_value: None,
             scopes: Vec::new(),
+            loops: Vec::new(),
         }
     }
 
@@ -125,7 +129,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
                 name => self
                     .module
                     .get_struct_type(name)
-                    .expect(&format!("struct {name} exists"))
+                    .unwrap_or_else(|| panic!("struct {name} exists"))
                     .as_basic_type_enum(),
             },
             Type::Var { type_: lock } => match lock.try_read() {
@@ -133,7 +137,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
                     TypeVar::Unbound { .. } | TypeVar::Generic { .. } => {
                         panic!("type must be resolved")
                     }
-                    TypeVar::Link { type_ } => self.fold_type(&type_),
+                    TypeVar::Link { type_ } => self.fold_type(type_),
                 },
                 Err(_) => unreachable!(),
             },
@@ -177,7 +181,7 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
     }
 
     /// Convert LLVM i1 into the language's i8 boolean representation.
-    fn from_condition(&self, value: inkwell::values::IntValue<'ctx>) -> BasicValueEnum<'ctx> {
+    fn as_bool(&self, value: inkwell::values::IntValue<'ctx>) -> BasicValueEnum<'ctx> {
         self.builder
             .build_int_z_extend(value, self.context.i8_type(), "bool")
             .unwrap()
@@ -200,11 +204,27 @@ impl<'a, 'ctx> LlvmCodeGen<'a, 'ctx> {
         self.scopes.push(false);
     }
 
-    fn end_scope(&mut self) -> bool {
-        self.scopes.pop().expect("scopes not empty")
+    fn end_scope(&mut self) {
+        self.scopes.pop().expect("scopes not empty");
     }
 
     fn mark_early_return(&mut self) {
         *self.scopes.last_mut().expect("scopes not empty") = true;
+    }
+
+    fn has_returned(&self) -> bool {
+        *self.scopes.last().expect("scopes not empty")
+    }
+
+    fn begin_loop(&mut self, label: BasicBlock<'ctx>) {
+        self.loops.push(label);
+    }
+
+    fn end_loop(&mut self) {
+        self.loops.pop();
+    }
+
+    fn loop_label(&self) -> &BasicBlock<'ctx> {
+        self.loops.last().expect("loop exists")
     }
 }

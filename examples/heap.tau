@@ -13,9 +13,15 @@ extern fn malloc(len: i64) -> *Node;
 
 extern fn free(ptr: *Node);
 
-extern fn puts(text: str);
+extern fn puts(text: str) -> i32;
 
-extern fn f2str(num: f64) -> str;
+extern fn strfromd(s: str, size: i64, format: str, fp: f64) -> u64;
+
+fn f2str(num: f64) -> str {
+  let buffer: str = "        ";
+  strfromd(buffer, 8, "%.2f", num);
+  return buffer;
+}
 
 fn node(next: *Node, value: f64) -> *Node {
   let new: *Node = malloc(16);
